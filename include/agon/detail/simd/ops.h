@@ -6,6 +6,8 @@
 #include "ops/mullo.h"
 #include "ops/fmadd.h"
 #include "ops/fmsub.h"
+#include "ops/fnmadd.h"
+#include "ops/fnmsub.h"
 #include "ops/neg.h"
 #include "ops/mulhi.h"
 #include "ops/div.h"

@@ -64,7 +64,7 @@ namespace agon::optim {
                         auto lr_vec = simd::set1<simd::vec<G>>(static_cast<G>(options.lr));
 
                         auto data_vec = simd::load<simd::vec<G>>(&data_ptr[i + offset]);
-                        data_vec = simd::fmsub(lr_vec, mom_vec, data_vec);
+                        data_vec = simd::fnmadd(lr_vec, mom_vec, data_vec);
                         simd::store(&data_ptr[i + offset], data_vec);
                     });
                 }
