@@ -15,7 +15,7 @@ namespace agon::optim {
     };
 
     struct SGDState : public OptimizerState {
-        std::vector<std::variant<std::float16_t, std::float32_t, std::float64_t>> momenta;
+        std::vector<GradData> momenta;
     };
 
     class SGD : public Optimizer {
@@ -29,7 +29,7 @@ namespace agon::optim {
                 bool maximize = false
             );
             explicit SGD(
-                std::initializer_list<ParameterView*> params, 
+                std::initializer_list<IParameter*> params, 
                 float learning_rate = 0.01f, 
                 float momentum = 0.0f, 
                 bool nesterov = false, 
@@ -44,5 +44,6 @@ namespace agon::optim {
         private:
             SGDParams options;
             SGDState state;
-    };
+            std::vector<IParameter*> parameters;
+        };
 }

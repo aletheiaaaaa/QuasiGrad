@@ -6,6 +6,10 @@
 #include <cstdint>
 
 namespace agon::optim {
+    struct GradData {
+        std::variant<std::vector<std::float16_t>, std::vector<float>, std::vector<double>> data{};
+    };
+
     struct OptimizerState {
         int64_t step = 0;
     };
@@ -14,10 +18,10 @@ namespace agon::optim {
         public:
             template<typename... Params>
             explicit Optimizer(Params&... params);
-            explicit Optimizer(std::initializer_list<ParameterView*> params);
+            explicit Optimizer(std::initializer_list<IParameter*> params);
 
             void zero_grad();
-            void add_parameter(ParameterView& param);
+            void add_parameter(IParameter& param);
 
             virtual void step() = 0;
 
@@ -27,6 +31,6 @@ namespace agon::optim {
             ~Optimizer() = default;
         protected:
             OptimizerState state;
-            std::vector<ParameterView*> parameters;
+            std::vector<IParameter*> parameters;
     };
 }

@@ -4,7 +4,7 @@ namespace agon::optim {
     template<typename... Params>
     Optimizer::Optimizer(Params&... params) : parameters{ &params... }, state{} {}
 
-    Optimizer::Optimizer(std::initializer_list<ParameterView*> params) : parameters(params), state{} {}
+    Optimizer::Optimizer(std::initializer_list<IParameter*> params) : parameters(params), state{} {}
 
     void Optimizer::zero_grad() {
         for (auto& param : parameters) {
@@ -12,7 +12,7 @@ namespace agon::optim {
         }
     }
 
-    void Optimizer::add_parameter(ParameterView& param) {
+    void Optimizer::add_parameter(IParameter& param) {
         parameters.push_back(&param);
     }
 }

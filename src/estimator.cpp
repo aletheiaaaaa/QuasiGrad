@@ -4,9 +4,9 @@ namespace agon::estim {
     template<typename... Params>
     Estimator::Estimator(Params&... params) : parameters{ &params... }, state{} {}
 
-    Estimator::Estimator(std::initializer_list<ParameterView*> params) : parameters(params), state{} {}
+    Estimator::Estimator(std::initializer_list<IParameter*> params) : parameters(params), state{} {}
 
-    void Estimator::add_parameter(ParameterView& param) {
+    void Estimator::add_parameter(IParameter& param) {
         parameters.push_back(&param);
     }
 }

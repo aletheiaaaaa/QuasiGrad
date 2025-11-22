@@ -1,5 +1,6 @@
 #include "../include/agon/parameter.h"
 #include "../include/agon/detail/simd/ops.h"
+#include "../include/agon/detail/simd/utils.h"
 
 namespace agon {
     template<typename T, typename G>
@@ -33,6 +34,36 @@ namespace agon {
     }
 
     template<typename T, typename G>
+    void* Parameter<T, G>::grad_ptr() {
+        return static_cast<void*>(grads.data());
+    }
+
+    template<typename T, typename G>
+    const void* Parameter<T, G>::grad_ptr() const {
+        return static_cast<const void*>(grads.data());
+    }
+
+    template<typename T, typename G>
+    void* Parameter<T, G>::data_ptr() {
+        return static_cast<void*>(vals.data());
+    }
+
+    template<typename T, typename G>
+    const void* Parameter<T, G>::data_ptr() const {
+        return static_cast<const void*>(vals.data());
+    }
+
+    template<typename T, typename G>
+    const std::type_info& Parameter<T, G>::grad_type() const {
+        return typeid(G);
+    }
+
+    template<typename T, typename G>
+    const std::type_info& Parameter<T, G>::data_type() const {
+        return typeid(T);
+    }
+
+    template<typename T, typename G>
     size_t Parameter<T, G>::size() const {
         return vals.size();
     }
@@ -47,11 +78,15 @@ namespace agon {
         constexpr size_t vec_size = vec<G>::size;
 
         size_t i = 0;
-        for (; i + vec_size <= grads.size(); i += vec_size) {
-            auto grad_vec = simd::load<vec<G>>(&grads[i]);
-            auto new_grad_vec = simd::load<vec<G>>(&new_grad[i]);
-            grad_vec = simd::add(grad_vec, new_grad_vec);
-            simd::store(&grads[i], grad_vec);
+        for (; i + vec_size * simd::UNROLL_FACTOR <= grads.size(); i += vec_size * simd::UNROLL_FACTOR) {
+            unroll<simd::UNROLL_FACTOR>([&]<size_t index>() {
+                constexpr size_t offset = index * vec_size;
+                
+                auto grad_vec = simd::load<vec<G>>(&grads[i + offset]);
+                auto new_vec = simd::load<vec<G>>(&new_grad[i + offset]);
+                grad_vec = simd::add(grad_vec, new_vec);
+                simd::store(&grads[i + offset], grad_vec);
+            });
         }
 
         for (; i < grads.size(); ++i) {

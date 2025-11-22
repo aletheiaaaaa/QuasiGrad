@@ -13,9 +13,9 @@ namespace agon::estim {
         public:
             template<typename... Params>
             explicit Estimator(Params&... params);
-            explicit Estimator(std::initializer_list<ParameterView*> params);
+            explicit Estimator(std::initializer_list<IParameter*> params);
 
-            void add_parameter(ParameterView& param);
+            void add_parameter(IParameter& param);
 
             virtual void needs_eval() = 0;
             virtual void perturb() = 0;
@@ -25,6 +25,6 @@ namespace agon::estim {
             virtual ~Estimator() = default;
         protected:
             EstimatorState state;
-            std::vector<ParameterView*> parameters;
+            std::vector<IParameter*> parameters;
     };
 }
