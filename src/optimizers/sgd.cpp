@@ -37,12 +37,13 @@ namespace agon::optim {
 
                 size_t param_size = param.size();
                 constexpr size_t vec_size = simd::vec<G>::size;
+                constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
 
                 auto& mom_data = std::get<std::vector<G>>(momentum.data);
 
                 size_t i = 0;
-                for (; i + vec_size * simd::UNROLL_FACTOR <= param_size; i += vec_size * simd::UNROLL_FACTOR) {
-                    simd::unroll<simd::UNROLL_FACTOR>([&]<size_t index>() {
+                for (; i + vec_size * unroll_factor <= param_size; i += vec_size * unroll_factor) {
+                    simd::unroll<unroll_factor>([&]<size_t index>() {
                         constexpr size_t offset = index * vec_size;
 
                         auto grad_vec = simd::load<simd::vec<G>>(&grad_ptr[i + offset]);

@@ -76,10 +76,11 @@ namespace agon {
     template<typename T, typename G>
     void Parameter<T, G>::accumulate(const std::vector<G>& new_grad) {
         constexpr size_t vec_size = vec<G>::size;
+        constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
 
         size_t i = 0;
-        for (; i + vec_size * simd::UNROLL_FACTOR <= grads.size(); i += vec_size * simd::UNROLL_FACTOR) {
-            unroll<simd::UNROLL_FACTOR>([&]<size_t index>() {
+        for (; i + vec_size * unroll_factor <= grads.size(); i += vec_size * unroll_factor) {
+            unroll<unroll_factor>([&]<size_t index>() {
                 constexpr size_t offset = index * vec_size;
                 
                 auto grad_vec = simd::load<vec<G>>(&grads[i + offset]);
