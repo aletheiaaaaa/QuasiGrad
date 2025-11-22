@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#if defined(__AVX512FP16__)
+#if defined(__AVX512_FP16__)
     #define HAS_FLOAT16 1
 #else
     #define HAS_FLOAT16 0
