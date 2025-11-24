@@ -33,8 +33,8 @@ namespace agon::estim {
             void observe(double value) override;
             void finalize() override;
         private:
-            RGEParams options;
-            RGEState state;
-            std::vector<IParameter*> parameters;
+            RGEParams options_;
+            RGEState state_;
+            std::vector<IParameter*> parameters_;
     };
 }

@@ -8,20 +8,20 @@ namespace agon::estim {
         Params&... params,
         bool two_sided,
         int num_directions
-    ) : options{two_sided, num_directions}, parameters{ &params... } {
-        state.losses.reserve( (two_sided ? num_directions * 2 : num_directions) );
+    ) : options_{two_sided, num_directions}, parameters_{ &params... } {
+        state_.losses.reserve( (two_sided ? num_directions * 2 : num_directions) );
     }
 
     RGE::RGE(
         std::initializer_list<IParameter*> params,
         bool two_sided,
         int num_directions
-    ) : options{two_sided, num_directions}, parameters(params) {
-        state.losses.reserve( (two_sided ? num_directions * 2 : num_directions) );
+    ) : options_{two_sided, num_directions}, parameters_(params) {
+        state_.losses.reserve( (two_sided ? num_directions * 2 : num_directions) );
     }
 
     bool RGE::needs_eval() {
-        return state.calls % (options.two_sided ? options.num_directions * 2 : options.num_directions) == 0;
+        return state_.calls % (options_.two_sided ? options_.num_directions * 2 : options_.num_directions) == 0;
     }
 
     void RGE::perturb() {
@@ -29,7 +29,7 @@ namespace agon::estim {
     }
 
     void RGE::observe(double value) {
-        state.losses.push_back(value);
+        state_.losses.push_back(value);
     }
 
     void RGE::finalize() {

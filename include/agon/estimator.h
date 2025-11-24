@@ -25,7 +25,7 @@ namespace agon::estim {
 
             virtual ~Estimator() = default;
         protected:
-            EstimatorState state;
-            std::vector<IParameter*> parameters;
+            EstimatorState state_;
+            std::vector<IParameter*> parameters_;
     };
 }

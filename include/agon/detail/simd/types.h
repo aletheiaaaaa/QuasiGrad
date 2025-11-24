@@ -308,4 +308,15 @@ namespace agon::simd {
 
     template<typename T>
     using vec = typename VecType<T, CURRENT_ARCH>::type;
+
+    template<typename T>
+concept ScalarCastable = std::is_same_v<T, int8_t>
+    || std::is_same_v<T, int16_t> || std::is_same_v<T, int32_t>
+    || std::is_same_v<T, int64_t> || std::is_same_v<T, float>
+    || std::is_same_v<T, double> || std::is_same_v<T, std::float32_t>
+    || std::is_same_v<T, std::float64_t>
+#if HAS_FLOAT16
+    || std::is_same_v<T, std::float16_t>
+#endif
+    ;
 }

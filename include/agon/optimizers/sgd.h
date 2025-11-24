@@ -42,8 +42,8 @@ namespace agon::optim {
             void save_to_bin(const std::string& path) const;
 
         private:
-            SGDParams options;
-            SGDState state;
-            std::vector<IParameter*> parameters;
+            SGDParams options_;
+            SGDState state_;
+            std::vector<IParameter*> parameters_;
         };
 }

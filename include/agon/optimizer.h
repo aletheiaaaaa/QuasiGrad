@@ -37,7 +37,7 @@ namespace agon::optim {
 
             ~Optimizer() = default;
         protected:
-            OptimizerState state;
-            std::vector<IParameter*> parameters;
+            OptimizerState state_;
+            std::vector<IParameter*> parameters_;
     };
 }

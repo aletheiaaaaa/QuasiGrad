@@ -19,3 +19,6 @@
 #include "ops/set1.h"
 #include "ops/setzero.h"
 #include "ops/reduce_add.h"
+#include "ops/round.h"
+#include "ops/cast.h"
+#include "ops/cast_trunc.h"

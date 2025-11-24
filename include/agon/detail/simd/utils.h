@@ -1,13 +1,21 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <concepts>
 #include <stdexcept>
 #include <stdfloat>
 #include <typeinfo>
 
 #include "arch.h"
+#include "types.h"
 
 namespace agon::simd {
+    template<typename F, typename T>
+    concept IsUpcast = 
+        simd::vec<F>::size >= 0 && simd::vec<T>::size >= 0 &&
+        simd::vec<F>::size < simd::vec<T>::size;
+
     constexpr size_t UNROLL_FACTOR = 
         (CURRENT_ARCH == Arch::AVX512) ? 4 :
         (CURRENT_ARCH == Arch::AVX2) ? 2 : 1;
@@ -20,7 +28,7 @@ namespace agon::simd {
     }
 
     template<typename F>
-    void dispatch_float(const std::type_info& type, F&& func) {
+    void dispatch(const std::type_info& type, F&& func) {
 #if HAS_FLOAT16
         if (type == typeid(std::float16_t)) {
             func.template operator()<std::float16_t>();

@@ -11,9 +11,9 @@ namespace agon::optim {
         float momentum, 
         bool nesterov, 
         bool maximize
-    ) : options{learning_rate, momentum, nesterov, maximize} {
-        (parameters.push_back(&params), ...);
-        state.momenta.resize(parameters.size());
+    ) : options_{learning_rate, momentum, nesterov, maximize} {
+        (parameters_.push_back(&params), ...);
+        state_.momenta.resize(parameters_.size());
     }
 
     SGD::SGD(
@@ -22,16 +22,16 @@ namespace agon::optim {
         float momentum, 
         bool nesterov, 
         bool maximize
-    ) : options{learning_rate, momentum, nesterov, maximize}, parameters(params) {
-        state.momenta.resize(parameters.size());
+    ) : options_{learning_rate, momentum, nesterov, maximize}, parameters_(params) {
+        state_.momenta.resize(parameters_.size());
     }
 
     void SGD::step() {
-        for (size_t idx = 0; idx < parameters.size(); ++idx) {
-            IParameter& param = *parameters[idx];
-            GradData& momentum = state.momenta[idx];
+        for (size_t idx = 0; idx < parameters_.size(); ++idx) {
+            IParameter& param = *parameters_[idx];
+            GradData& momentum = state_.momenta[idx];
 
-            simd::dispatch_float(param.grad_type(), [&]<typename G>() {
+            simd::dispatch(param.dtype(), [&]<typename G>() {
                 G* grad_ptr = static_cast<G*>(param.grad_ptr());
                 G* data_ptr = static_cast<G*>(param.data_ptr());
 
@@ -49,15 +49,15 @@ namespace agon::optim {
                         auto grad_vec = simd::load<simd::vec<G>>(&grad_ptr[i + offset]);
                         auto mom_vec = simd::load<simd::vec<G>>(&mom_data[i + offset]);
 
-                        if (options.maximize) grad_vec = simd::neg(grad_vec);
+                        if (options_.maximize) grad_vec = simd::neg(grad_vec);
 
-                        auto mom_coeff = simd::set1<simd::vec<G>>(static_cast<G>(options.momentum));
+                        auto mom_coeff = simd::set1<simd::vec<G>>(static_cast<G>(options_.momentum));
                         mom_vec = simd::fmadd(mom_coeff, mom_vec, grad_vec);
                         simd::store(&mom_data[i + offset], mom_vec);
 
-                        if (options.nesterov) mom_vec = simd::fmadd(mom_coeff, mom_vec, grad_vec);
+                        if (options_.nesterov) mom_vec = simd::fmadd(mom_coeff, mom_vec, grad_vec);
 
-                        auto lr_vec = simd::set1<simd::vec<G>>(static_cast<G>(options.lr));
+                        auto lr_vec = simd::set1<simd::vec<G>>(static_cast<G>(options_.lr));
 
                         auto data_vec = simd::load<simd::vec<G>>(&data_ptr[i + offset]);
                         data_vec = simd::fnmadd(lr_vec, mom_vec, data_vec);
@@ -67,19 +67,19 @@ namespace agon::optim {
 
                 for (; i < param_size; ++i) {
                     G grad_val = grad_ptr[i];
-                    if (options.maximize) grad_val = -grad_val;
+                    if (options_.maximize) grad_val = -grad_val;
 
                     G& mom_val = mom_data[i];
-                    mom_val = options.momentum * mom_val + grad_val;
+                    mom_val = options_.momentum * mom_val + grad_val;
 
                     G update_val = mom_val;
-                    if (options.nesterov) update_val = options.momentum * mom_val + grad_val;
+                    if (options_.nesterov) update_val = options_.momentum * mom_val + grad_val;
 
-                    data_ptr[i] -= options.lr * update_val;
+                    data_ptr[i] -= options_.lr * update_val;
                 }
             });
         }
 
-        state.step += 1;
+        state_.step += 1;
     }
 }
