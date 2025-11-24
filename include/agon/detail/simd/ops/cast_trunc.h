@@ -143,6 +143,56 @@ namespace agon::simd {
         return VecF32<Arch::AVX512>(_mm512_castps256_ps512(narrow));
     }
 
+    template<>
+    inline VecI32<Arch::AVX512> cast_trunc(VecF32<Arch::AVX512> v) {
+        return VecI32<Arch::AVX512>(_mm512_cvttps_epi32(v.data));
+    }
+
+    template<>
+    inline VecI64<Arch::AVX512> cast_trunc(VecF64<Arch::AVX512> v) {
+        return VecI64<Arch::AVX512>(_mm512_cvttpd_epi64(v.data));
+    }
+
+    template<>
+    inline VecI32<Arch::AVX512> cast_trunc(VecF64<Arch::AVX512> v) {
+        __m256i narrow = _mm512_cvttpd_epi32(v.data);
+        return VecI32<Arch::AVX512>(_mm512_castsi256_si512(narrow));
+    }
+
+    template<size_t N>
+    inline VecI64<Arch::AVX512> cast_trunc(VecF32<Arch::AVX512> v) {
+        __m256 chunk = (N == 0) ? _mm512_castps512_ps256(v.data) : _mm512_extractf32x8_ps(v.data, 1);
+        return VecI64<Arch::AVX512>(_mm512_cvttps_epi64(chunk));
+    }
+
+    template<>
+    inline VecI16<Arch::AVX512> cast_trunc(VecF32<Arch::AVX512> v) {
+        __m512i i32 = _mm512_cvttps_epi32(v.data);
+        __m256i narrow = _mm512_cvtepi32_epi16(i32);
+        return VecI16<Arch::AVX512>(_mm512_castsi256_si512(narrow));
+    }
+
+    template<>
+    inline VecI8<Arch::AVX512> cast_trunc(VecF32<Arch::AVX512> v) {
+        __m512i i32 = _mm512_cvttps_epi32(v.data);
+        __m128i narrow = _mm512_cvtepi32_epi8(i32);
+        return VecI8<Arch::AVX512>(_mm512_castsi128_si512(narrow));
+    }
+
+    template<>
+    inline VecI16<Arch::AVX512> cast_trunc(VecF64<Arch::AVX512> v) {
+        __m256i i32 = _mm512_cvttpd_epi32(v.data);
+        __m128i narrow = _mm256_cvtepi32_epi16(i32);
+        return VecI16<Arch::AVX512>(_mm512_castsi128_si512(narrow));
+    }
+
+    template<>
+    inline VecI8<Arch::AVX512> cast_trunc(VecF64<Arch::AVX512> v) {
+        __m256i i32 = _mm512_cvttpd_epi32(v.data);
+        __m128i narrow = _mm256_cvtepi32_epi8(i32);
+        return VecI8<Arch::AVX512>(_mm512_castsi128_si512(narrow));
+    }
+
 #if HAS_FLOAT16
     template<size_t N>
     inline VecF32<Arch::AVX512> cast_trunc(VecF16<Arch::AVX512> v) {
@@ -167,6 +217,31 @@ namespace agon::simd {
     inline VecF16<Arch::AVX512> cast_trunc(VecF64<Arch::AVX512> v) {
         __m128h narrow = _mm512_cvtpd_ph(v.data);
         return VecF16<Arch::AVX512>(_mm512_castph128_ph512(narrow));
+    }
+
+    template<size_t N>
+    inline VecI32<Arch::AVX512> cast_trunc(VecF16<Arch::AVX512> v) {
+        __m256h chunk = (N == 0) ? _mm512_castph512_ph256(v.data) : _mm256_castpd_ph(_mm512_extractf64x4_pd(_mm512_castph_pd(v.data), 1));
+        return VecI32<Arch::AVX512>(_mm512_cvttph_epi32(chunk));
+    }
+
+    template<size_t N>
+    inline VecI64<Arch::AVX512> cast_trunc(VecF16<Arch::AVX512> v) {
+        __m256h half = (N < 2) ? _mm512_castph512_ph256(v.data) : _mm256_castpd_ph(_mm512_extractf64x4_pd(_mm512_castph_pd(v.data), 1));
+        __m128h chunk = (N % 2 == 0) ? _mm256_castph256_ph128(half) : _mm_castpd_ph(_mm256_extractf64x2_pd(_mm256_castph_pd(half), 1));
+        return VecI64<Arch::AVX512>(_mm512_cvttph_epi64(chunk));
+    }
+
+    template<>
+    inline VecI16<Arch::AVX512> cast_trunc(VecF16<Arch::AVX512> v) {
+        return VecI16<Arch::AVX512>(_mm512_cvttph_epi16(v.data));
+    }
+
+    template<>
+    inline VecI8<Arch::AVX512> cast_trunc(VecF16<Arch::AVX512> v) {
+        __m512i i16 = _mm512_cvttph_epi16(v.data);
+        __m256i narrow = _mm512_cvtepi16_epi8(i16);
+        return VecI8<Arch::AVX512>(_mm512_castsi256_si512(narrow));
     }
 #endif
 
@@ -264,22 +339,26 @@ namespace agon::simd {
 
     template<>
     inline VecI16<Arch::AVX2> cast_trunc(VecI64<Arch::AVX2> v) {
-        __m256i shuf = _mm256_set_epi8(
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 8, 1, 0,
+        __m128i lo = _mm256_castsi256_si128(v.data);
+        __m128i hi = _mm256_extracti128_si256(v.data, 1);
+        __m128i shuf = _mm_set_epi8(
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 8, 1, 0
         );
-        __m256i shuffled = _mm256_shuffle_epi8(v.data, shuf);
-        return VecI16<Arch::AVX2>(_mm256_permute4x64_epi64(shuffled, _MM_SHUFFLE(3, 3, 2, 0)));
+        lo = _mm_shuffle_epi8(lo, shuf);
+        hi = _mm_shuffle_epi8(hi, shuf);
+        return VecI16<Arch::AVX2>(_mm256_castsi128_si256(_mm_unpacklo_epi32(lo, hi)));
     }
 
     template<>
     inline VecI8<Arch::AVX2> cast_trunc(VecI64<Arch::AVX2> v) {
-        __m256i shuf = _mm256_set_epi8(
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 8, 0,
+        __m128i lo = _mm256_castsi256_si128(v.data);
+        __m128i hi = _mm256_extracti128_si256(v.data, 1);
+        __m128i shuf = _mm_set_epi8(
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 8, 0
         );
-        __m256i shuffled = _mm256_shuffle_epi8(v.data, shuf);
-        return VecI8<Arch::AVX2>(_mm256_permute4x64_epi64(shuffled, _MM_SHUFFLE(3, 3, 2, 0)));
+        lo = _mm_shuffle_epi8(lo, shuf);
+        hi = _mm_shuffle_epi8(hi, shuf);
+        return VecI8<Arch::AVX2>(_mm256_castsi128_si256(_mm_unpacklo_epi16(lo, hi)));
     }
 
     template<>
@@ -294,12 +373,14 @@ namespace agon::simd {
 
     template<>
     inline VecI8<Arch::AVX2> cast_trunc(VecI32<Arch::AVX2> v) {
-        __m256i shuf = _mm256_set_epi8(
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0,
+        __m128i lo = _mm256_castsi256_si128(v.data);
+        __m128i hi = _mm256_extracti128_si256(v.data, 1);
+        __m128i shuf = _mm_set_epi8(
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0
         );
-        __m256i shuffled = _mm256_shuffle_epi8(v.data, shuf);
-        return VecI8<Arch::AVX2>(_mm256_permute4x64_epi64(shuffled, _MM_SHUFFLE(3, 3, 2, 0)));
+        lo = _mm_shuffle_epi8(lo, shuf);
+        hi = _mm_shuffle_epi8(hi, shuf);
+        return VecI8<Arch::AVX2>(_mm256_castsi128_si256(_mm_unpacklo_epi32(lo, hi)));
     }
 
     template<>
@@ -316,6 +397,59 @@ namespace agon::simd {
     inline VecF32<Arch::AVX2> cast_trunc(VecF64<Arch::AVX2> v) {
         __m128 narrow = _mm256_cvtpd_ps(v.data);
         return VecF32<Arch::AVX2>(_mm256_castps128_ps256(narrow));
+    }
+
+    template<>
+    inline VecI32<Arch::AVX2> cast_trunc(VecF32<Arch::AVX2> v) {
+        return VecI32<Arch::AVX2>(_mm256_cvttps_epi32(v.data));
+    }
+
+    template<>
+    inline VecI32<Arch::AVX2> cast_trunc(VecF64<Arch::AVX2> v) {
+        __m128i narrow = _mm256_cvttpd_epi32(v.data);
+        return VecI32<Arch::AVX2>(_mm256_castsi128_si256(narrow));
+    }
+
+    template<>
+    inline VecI16<Arch::AVX2> cast_trunc(VecF32<Arch::AVX2> v) {
+        __m256i i32 = _mm256_cvttps_epi32(v.data);
+        __m256i shuf = _mm256_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, 13, 12, 9, 8, 5, 4, 1, 0,
+            -1, -1, -1, -1, -1, -1, -1, -1, 13, 12, 9, 8, 5, 4, 1, 0
+        );
+        __m256i shuffled = _mm256_shuffle_epi8(i32, shuf);
+        return VecI16<Arch::AVX2>(_mm256_permute4x64_epi64(shuffled, _MM_SHUFFLE(3, 3, 2, 0)));
+    }
+
+    template<>
+    inline VecI8<Arch::AVX2> cast_trunc(VecF32<Arch::AVX2> v) {
+        __m256i i32 = _mm256_cvttps_epi32(v.data);
+        __m128i lo = _mm256_castsi256_si128(i32);
+        __m128i hi = _mm256_extracti128_si256(i32, 1);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0
+        );
+        lo = _mm_shuffle_epi8(lo, shuf);
+        hi = _mm_shuffle_epi8(hi, shuf);
+        return VecI8<Arch::AVX2>(_mm256_castsi128_si256(_mm_unpacklo_epi32(lo, hi)));
+    }
+
+    template<>
+    inline VecI16<Arch::AVX2> cast_trunc(VecF64<Arch::AVX2> v) {
+        __m128i i32 = _mm256_cvttpd_epi32(v.data);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, 13, 12, 9, 8, 5, 4, 1, 0
+        );
+        return VecI16<Arch::AVX2>(_mm256_castsi128_si256(_mm_shuffle_epi8(i32, shuf)));
+    }
+
+    template<>
+    inline VecI8<Arch::AVX2> cast_trunc(VecF64<Arch::AVX2> v) {
+        __m128i i32 = _mm256_cvttpd_epi32(v.data);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0
+        );
+        return VecI8<Arch::AVX2>(_mm256_castsi128_si256(_mm_shuffle_epi8(i32, shuf)));
     }
 
 #elif defined(__SSE4_1__)
@@ -447,6 +581,52 @@ namespace agon::simd {
         return VecF32<Arch::SSE4_1>(_mm_cvtpd_ps(v.data));
     }
 
+    template<>
+    inline VecI32<Arch::SSE4_1> cast_trunc(VecF32<Arch::SSE4_1> v) {
+        return VecI32<Arch::SSE4_1>(_mm_cvttps_epi32(v.data));
+    }
+
+    template<>
+    inline VecI32<Arch::SSE4_1> cast_trunc(VecF64<Arch::SSE4_1> v) {
+        return VecI32<Arch::SSE4_1>(_mm_cvttpd_epi32(v.data));
+    }
+
+    template<>
+    inline VecI16<Arch::SSE4_1> cast_trunc(VecF32<Arch::SSE4_1> v) {
+        __m128i i32 = _mm_cvttps_epi32(v.data);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, 13, 12, 9, 8, 5, 4, 1, 0
+        );
+        return VecI16<Arch::SSE4_1>(_mm_shuffle_epi8(i32, shuf));
+    }
+
+    template<>
+    inline VecI8<Arch::SSE4_1> cast_trunc(VecF32<Arch::SSE4_1> v) {
+        __m128i i32 = _mm_cvttps_epi32(v.data);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 12, 8, 4, 0
+        );
+        return VecI8<Arch::SSE4_1>(_mm_shuffle_epi8(i32, shuf));
+    }
+
+    template<>
+    inline VecI16<Arch::SSE4_1> cast_trunc(VecF64<Arch::SSE4_1> v) {
+        __m128i i32 = _mm_cvttpd_epi32(v.data);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5, 4, 1, 0
+        );
+        return VecI16<Arch::SSE4_1>(_mm_shuffle_epi8(i32, shuf));
+    }
+
+    template<>
+    inline VecI8<Arch::SSE4_1> cast_trunc(VecF64<Arch::SSE4_1> v) {
+        __m128i i32 = _mm_cvttpd_epi32(v.data);
+        __m128i shuf = _mm_set_epi8(
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 4, 0
+        );
+        return VecI8<Arch::SSE4_1>(_mm_shuffle_epi8(i32, shuf));
+    }
+
 #else
     template<size_t N>
     inline VecI16<Arch::GENERIC> cast_trunc(VecI8<Arch::GENERIC> v) {
@@ -546,6 +726,46 @@ namespace agon::simd {
     template<>
     inline VecF32<Arch::GENERIC> cast_trunc(VecF64<Arch::GENERIC> v) {
         return VecF32<Arch::GENERIC>(static_cast<float>(v.data));
+    }
+
+    template<>
+    inline VecI32<Arch::GENERIC> cast_trunc(VecF32<Arch::GENERIC> v) {
+        return VecI32<Arch::GENERIC>(static_cast<int32_t>(v.data));
+    }
+
+    template<>
+    inline VecI64<Arch::GENERIC> cast_trunc(VecF64<Arch::GENERIC> v) {
+        return VecI64<Arch::GENERIC>(static_cast<int64_t>(v.data));
+    }
+
+    template<>
+    inline VecI32<Arch::GENERIC> cast_trunc(VecF64<Arch::GENERIC> v) {
+        return VecI32<Arch::GENERIC>(static_cast<int32_t>(v.data));
+    }
+
+    template<size_t N>
+    inline VecI64<Arch::GENERIC> cast_trunc(VecF32<Arch::GENERIC> v) {
+        return VecI64<Arch::GENERIC>(static_cast<int64_t>(v.data));
+    }
+
+    template<>
+    inline VecI16<Arch::GENERIC> cast_trunc(VecF32<Arch::GENERIC> v) {
+        return VecI16<Arch::GENERIC>(static_cast<int16_t>(v.data));
+    }
+
+    template<>
+    inline VecI8<Arch::GENERIC> cast_trunc(VecF32<Arch::GENERIC> v) {
+        return VecI8<Arch::GENERIC>(static_cast<int8_t>(v.data));
+    }
+
+    template<>
+    inline VecI16<Arch::GENERIC> cast_trunc(VecF64<Arch::GENERIC> v) {
+        return VecI16<Arch::GENERIC>(static_cast<int16_t>(v.data));
+    }
+
+    template<>
+    inline VecI8<Arch::GENERIC> cast_trunc(VecF64<Arch::GENERIC> v) {
+        return VecI8<Arch::GENERIC>(static_cast<int8_t>(v.data));
     }
 #endif
 

@@ -85,6 +85,6 @@ namespace agon {
             bool use_affine_ = false;
             bool use_full_ = false;
 
-            std::pair<bool, bool> compute_quant_params_(bool use_affine, bool use_full) const;
+            std::pair<float, float> compute_quant_params_(T min, T max, bool use_affine, bool use_full) const;
     };
 }

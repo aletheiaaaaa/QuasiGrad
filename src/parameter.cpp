@@ -167,6 +167,25 @@ namespace agon {
     }
 
     template<typename Q, typename T>
+    Quantized<Q, T>::Quantized(const std::vector<T>& data, bool use_affine, bool use_full)
+        : Parameter<T>(data) {
+        T min_val = *std::min_element(data.begin(), data.end());
+        T max_val = *std::max_element(data.begin(), data.end());
+
+        std::tie(scale_, zero_point_) = compute_quant_params_(min_val, max_val, use_affine, use_full);
+    }
+
+    template<typename Q, typename T>
+    template<size_t N>
+    Quantized<Q, T>::Quantized(const std::array<T, N>& data, bool use_affine, bool use_full)
+        : Parameter<T>(data) {
+        T min_val = *std::min_element(data.begin(), data.end());
+        T max_val = *std::max_element(data.begin(), data.end());
+
+        std::tie(scale_, zero_point_) = compute_quant_params_(min_val, max_val, use_affine, use_full);
+    }
+
+    template<typename Q, typename T>
     std::vector<Q> Quantized<Q, T>::quantized() const {
         const auto& vals = this->data();
         std::vector<Q> quantized_data(vals.size());
@@ -260,5 +279,30 @@ namespace agon {
     template<typename Q, typename T>
     const std::type_info& Quantized<Q, T>::quantized_dtype() const {
         return typeid(Q);
+    }
+
+    template<typename Q, typename T>
+    std::pair<float, float> Quantized<Q, T>::compute_quant_params_(T min, T max, bool use_affine, bool use_full) const {
+        float qmin = static_cast<float>(std::numeric_limits<Q>::min());
+        float qmax = static_cast<float>(std::numeric_limits<Q>::max());
+
+        float tmax, tmin;
+        if (use_full) {
+            tmax = static_cast<float>(std::numeric_limits<T>::max());
+            tmin = static_cast<float>(std::numeric_limits<T>::min());
+        } else {
+            tmax = max;
+            tmin = min;
+        }
+
+        float scale = (tmax - tmin) / (qmax - qmin);
+        float zero_point = 0.0f;
+
+        if (use_affine) {
+            zero_point = qmin - tmin / scale;
+            zero_point = std::round(std::clamp(zero_point, qmin, qmax));
+        }
+
+        return {scale, zero_point};
     }
 }
