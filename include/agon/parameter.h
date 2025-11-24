@@ -62,9 +62,9 @@ namespace agon {
         public:
             Quantized(size_t size);
 
-            Quantized(const std::vector<Q>& data, float scale, float zero_point);
+            Quantized(const std::vector<Q>& data, float scale = 1.0f, float zero_point = 0.0f);
             template<size_t N>
-            Quantized(const std::array<Q, N>& data, float scale, float zero_point);
+            Quantized(const std::array<Q, N>& data, float scale = 1.0f, float zero_point = 0.0f);
 
             Quantized(const std::vector<T>& data, bool use_affine = false, bool use_full = false);
             template<size_t N>

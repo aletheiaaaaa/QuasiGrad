@@ -28,7 +28,7 @@ namespace agon::simd {
     }
 
     template<typename F>
-    void dispatch(const std::type_info& type, F&& func) {
+    constexpr void dispatch(const std::type_info& type, F&& func) {
 #if HAS_FLOAT16
         if (type == typeid(std::float16_t)) {
             func.template operator()<std::float16_t>();
