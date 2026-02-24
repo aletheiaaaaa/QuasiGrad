@@ -10,7 +10,7 @@ namespace agon::optim {
     template<typename... Ts>
     void SGD<Ts...>::step() {
         std::apply([&](auto&... params) {
-            (std::for_each(params.begin(), params.end(), [&](auto& param) {
+            (std::ranges::for_each(params.begin(), params.end(), [&](auto& param) {
                 using T = typename std::decay_t<decltype(param)>::DataType;
 
                 auto& grad = param.grad();
@@ -69,7 +69,7 @@ namespace agon::optim {
         in_file.read(reinterpret_cast<char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... params) {
-            (std::for_each(params.begin(), params.end(), [&](auto& param) {
+            (std::ranges::for_each(params.begin(), params.end(), [&](auto& param) {
                 using T = typename std::decay_t<decltype(param)>::DataType;
                 auto& mom = std::get<std::vector<T>>(state_.momenta);
 
@@ -85,10 +85,10 @@ namespace agon::optim {
         std::ofstream out_file(path, std::ios::binary);
         if (!out_file) throw std::runtime_error("Failed to open file for writing: " + path_str);
 
-        out_file.write(reinterpret_cast<const char*>(&state_.stepauto& param), sizeof(state_.step));
+        out_file.write(reinterpret_cast<const char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... params) {
-            (std::for_each(params.begin(), params.end(), [&]() {
+            (std::ranges::for_each(params.begin(), params.end(), [&](auto& param) {
                 using T = typename std::decay_t<decltype(param)>::DataType;
                 auto& mom = std::get<std::vector<T>>(state_.momenta);
 

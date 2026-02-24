@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../optimizer.h"  
+#include <algorithm>
 
 namespace agon::optim {
     struct SGDParams {
@@ -22,7 +23,7 @@ namespace agon::optim {
             explicit SGD(ParameterPack<Ts...> parameters, SGDParams options = {}) 
                 : Optimizer<Ts...>(parameters), options_(options) {
                     std::apply([&](auto&... params) {
-                        (std::for_each(params.begin(), params.end(), [&](auto& param) {
+                        (std::ranges::for_each(params.begin(), params.end(), [&](auto& param) {
                             using DataType = typename std::decay_t<decltype(param)>::DataType;
                             std::get<std::vector<DataType>>(this->state_.momenta).emplace_back(param.size());
                         }), ...);
@@ -36,6 +37,6 @@ namespace agon::optim {
 
         private:
             SGDParams options_;
-            SGDState state_;
-        };
+            SGDState<Ts...> state_;
+    };
 }
