@@ -20,7 +20,7 @@ namespace agon::optim {
             void zero_grad();
 
             template<typename T>
-                requires (std::same_as<T, Parameter<typename T::DataType>>)
+                requires std::derived_from<T, Parameter<typename T::DataType>>
             void add_parameter(T& param) {
                 parameters_.template add_parameter(param);
             }
@@ -36,12 +36,6 @@ namespace agon::optim {
             ParameterPack<Ts...> parameters_;
     };
 
-    template<typename... Ts>
-    void Optimizer<Ts...>::zero_grad() {
-        std::apply([](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [](auto& param) {
-                param.zero_grad();
-            }), ...);
-        }, parameters_.data);
-    }
+    extern template class Optimizer<std::tuple<agon::Parameter<float>>>;
+    extern template class Optimizer<std::tuple<agon::Parameter<double>>>;
 }

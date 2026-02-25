@@ -12,16 +12,17 @@ option(AGON_ENABLE_AVX512 "Enable AVX512 instructions (if available)" ON)
 option(AGON_ENABLE_AVX2 "Enable AVX2 instructions (if available)" ON)
 option(AGON_ENABLE_SSE4 "Enable SSE4.1 instructions (if available)" ON)
 
-# Create header-only library target
-add_library(agon INTERFACE)
+# Create compiled library target
+file(GLOB_RECURSE AGON_SOURCES CONFIGURE_DEPENDS src/*.cpp)
+add_library(agon STATIC ${AGON_SOURCES})
 add_library(agon::agon ALIAS agon)
 
 # Require C++20 for concepts
-target_compile_features(agon INTERFACE cxx_std_20)
+target_compile_features(agon PUBLIC cxx_std_20)
 
 # Include directories
 target_include_directories(agon
-    INTERFACE
+    PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
@@ -30,14 +31,14 @@ target_include_directories(agon
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     # Architecture optimizations
     if(AGON_ENABLE_NATIVE)
-        target_compile_options(agon INTERFACE -march=native)
+        target_compile_options(agon PUBLIC -march=native)
     else()
         # Manual SIMD feature flags
         if(AGON_ENABLE_AVX512)
             include(CheckCXXCompilerFlag)
             check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
             if(COMPILER_SUPPORTS_AVX512F)
-                target_compile_options(agon INTERFACE -mavx512f)
+                target_compile_options(agon PUBLIC -mavx512f)
             endif()
         endif()
 
@@ -45,7 +46,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             include(CheckCXXCompilerFlag)
             check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
             if(COMPILER_SUPPORTS_AVX2)
-                target_compile_options(agon INTERFACE -mavx2 -mfma)
+                target_compile_options(agon PUBLIC -mavx2 -mfma)
             endif()
         endif()
 
@@ -53,18 +54,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             include(CheckCXXCompilerFlag)
             check_cxx_compiler_flag("-msse4.1" COMPILER_SUPPORTS_SSE41)
             if(COMPILER_SUPPORTS_SSE41)
-                target_compile_options(agon INTERFACE -msse4.1)
+                target_compile_options(agon PUBLIC -msse4.1)
             endif()
         endif()
     endif()
 
 elseif(MSVC)
     if(AGON_ENABLE_AVX512)
-        target_compile_options(agon INTERFACE /arch:AVX512)
+        target_compile_options(agon PUBLIC /arch:AVX512)
     elseif(AGON_ENABLE_AVX2)
-        target_compile_options(agon INTERFACE /arch:AVX2)
+        target_compile_options(agon PUBLIC /arch:AVX2)
     elseif(AGON_ENABLE_SSE4)
-        target_compile_options(agon INTERFACE /arch:SSE2)
+        target_compile_options(agon PUBLIC /arch:SSE2)
     endif()
 endif()
 
