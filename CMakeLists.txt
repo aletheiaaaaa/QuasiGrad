@@ -7,53 +7,37 @@ project(agon
 )
 
 # Options
-option(AGON_BUILD_SHARED "Build shared library instead of static" OFF)
 option(AGON_ENABLE_NATIVE "Enable native architecture optimizations (-march=native)" ON)
 option(AGON_ENABLE_AVX512 "Enable AVX512 instructions (if available)" ON)
 option(AGON_ENABLE_AVX2 "Enable AVX2 instructions (if available)" ON)
 option(AGON_ENABLE_SSE4 "Enable SSE4.1 instructions (if available)" ON)
 
-# Source files (automatically find all .cpp files in src/)
-file(GLOB_RECURSE AGON_SOURCES src/*.cpp)
-
-# Create library target
-if(AGON_BUILD_SHARED)
-    add_library(agon SHARED ${AGON_SOURCES})
-else()
-    add_library(agon STATIC ${AGON_SOURCES})
-endif()
-
+# Create header-only library target
+add_library(agon INTERFACE)
 add_library(agon::agon ALIAS agon)
 
 # Require C++20 for concepts
-target_compile_features(agon PUBLIC cxx_std_20)
+target_compile_features(agon INTERFACE cxx_std_20)
 
 # Include directories
 target_include_directories(agon
-    PUBLIC
+    INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 
 # Compiler-specific settings
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Warning flags
-    target_compile_options(agon PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-    )
-
     # Architecture optimizations
     if(AGON_ENABLE_NATIVE)
-        target_compile_options(agon PUBLIC -march=native)
+        target_compile_options(agon INTERFACE -march=native)
     else()
         # Manual SIMD feature flags
         if(AGON_ENABLE_AVX512)
             include(CheckCXXCompilerFlag)
             check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
             if(COMPILER_SUPPORTS_AVX512F)
-                target_compile_options(agon PUBLIC -mavx512f)
+                target_compile_options(agon INTERFACE -mavx512f)
             endif()
         endif()
 
@@ -61,7 +45,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             include(CheckCXXCompilerFlag)
             check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
             if(COMPILER_SUPPORTS_AVX2)
-                target_compile_options(agon PUBLIC -mavx2 -mfma)
+                target_compile_options(agon INTERFACE -mavx2 -mfma)
             endif()
         endif()
 
@@ -69,32 +53,20 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             include(CheckCXXCompilerFlag)
             check_cxx_compiler_flag("-msse4.1" COMPILER_SUPPORTS_SSE41)
             if(COMPILER_SUPPORTS_SSE41)
-                target_compile_options(agon PUBLIC -msse4.1)
+                target_compile_options(agon INTERFACE -msse4.1)
             endif()
         endif()
     endif()
 
 elseif(MSVC)
-    target_compile_options(agon PRIVATE
-        /W4
-        /permissive-
-    )
-
     if(AGON_ENABLE_AVX512)
-        target_compile_options(agon PUBLIC /arch:AVX512)
+        target_compile_options(agon INTERFACE /arch:AVX512)
     elseif(AGON_ENABLE_AVX2)
-        target_compile_options(agon PUBLIC /arch:AVX2)
+        target_compile_options(agon INTERFACE /arch:AVX2)
     elseif(AGON_ENABLE_SSE4)
-        target_compile_options(agon PUBLIC /arch:SSE2)  # MSVC doesn't have SSE4.1 specific flag
+        target_compile_options(agon INTERFACE /arch:SSE2)
     endif()
 endif()
-
-# Position independent code for shared libraries
-set_target_properties(agon PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-)
 
 # Installation
 include(GNUInstallDirs)
@@ -145,3 +117,33 @@ export(EXPORT agonTargets
     FILE ${CMAKE_CURRENT_BINARY_DIR}/agonTargets.cmake
     NAMESPACE agon::
 )
+
+# Uninstall target
+if(NOT TARGET uninstall)
+    file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake" CONTENT
+[[if(NOT EXISTS "@CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt")
+    message(FATAL_ERROR "Cannot find install manifest: @CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt")
+endif()
+
+file(READ "@CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt" files)
+string(REGEX REPLACE "\n" ";" files "${files}")
+
+foreach(file ${files})
+    message(STATUS "Uninstalling $ENV{DESTDIR}${file}")
+    if(IS_SYMLINK "$ENV{DESTDIR}${file}" OR EXISTS "$ENV{DESTDIR}${file}")
+        execute_process(
+            COMMAND "@CMAKE_COMMAND@" -E remove "$ENV{DESTDIR}${file}"
+            RESULT_VARIABLE rm_retval
+        )
+        if(NOT "${rm_retval}" STREQUAL "0")
+            message(FATAL_ERROR "Problem when removing $ENV{DESTDIR}${file}")
+        endif()
+    else()
+        message(STATUS "File $ENV{DESTDIR}${file} does not exist.")
+    endif()
+endforeach()
+]] @ONLY)
+    add_custom_target(uninstall
+        COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    )
+endif()
