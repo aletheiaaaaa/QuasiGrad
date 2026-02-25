@@ -9,7 +9,7 @@
 #include <span>
 #include <functional>
 
-#include "../detail/dedup.h"
+#include "detail/dedup.h"
 
 namespace agon {
     template<typename T>
@@ -83,7 +83,6 @@ namespace agon {
                 .emplace_back(static_cast<AsParameter_t<T>&>(param));
         }
     };
-
     template<typename... Ts>
     ParameterPack(Ts&...) -> ParameterPack<dedup::DeduplicatedPack_t<AsParameter_t<std::decay_t<Ts>>...>>;
 

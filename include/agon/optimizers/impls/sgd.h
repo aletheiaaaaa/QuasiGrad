@@ -1,8 +1,8 @@
 #pragma once
 
 #include "../optimizer.h"
-#include "../detail/simd/ops.h"
-#include "../detail/simd/utils.h"
+#include "../../detail/simd/ops.h"
+#include "../../detail/simd/utils.h"
 #include <algorithm>
 #include <fstream>
 #include <filesystem>
@@ -29,8 +29,9 @@ namespace agon::optim {
                     std::apply([&](auto&... param_vecs) {
                         (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
                             auto& param = param_ref.get();
-                            using T = typename std::decay_t<decltype(param)>::DataType;
-                            std::get<std::vector<T>>(this->state_.momenta).emplace_back(param.size());
+                            using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
+                            auto& mom = std::get<std::vector<T>>(this->state_.momenta);
+                            mom.insert(mom.end(), param.size(), T(0));
                         }), ...);
                     }, this->parameters_.data);
                 }

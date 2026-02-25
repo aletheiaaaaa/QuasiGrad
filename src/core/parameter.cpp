@@ -4,42 +4,51 @@
 
 namespace agon {
     template<typename T>
+        requires std::is_floating_point_v<T>
     Parameter<T>::Parameter(size_t size) : data_(size), grad_(size, T(0)) {};
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     Parameter<T>::Parameter(const std::span<T>& data) : data_(data.begin(), data.end()), grad_(data.size(), T(0)) {};
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     std::vector<T>& Parameter<T>::grad() {
         return grad_;
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     const std::vector<T>& Parameter<T>::grad() const {
         return grad_;
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     std::vector<T>& Parameter<T>::data() {
         return data_;
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     const std::vector<T>& Parameter<T>::data() const {
         return data_;
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     size_t Parameter<T>::size() const {
         return data_.size();
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     void Parameter<T>::zero_grad() {
         std::fill(grad_.begin(), grad_.end(), T(0));
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     void Parameter<T>::accumulate(const std::vector<T>& new_grad) {
         constexpr size_t vec_size = simd::vec<T>::size;
         constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
@@ -62,14 +71,17 @@ namespace agon {
     }
 
     template<typename T>
+        requires std::is_floating_point_v<T>
     void Parameter<T>::update(const std::vector<T>& new_val) {
         data_ = new_val;
     }
 
     template<typename Q, typename T>
+        requires (std::is_same_v<Q, int16_t> || std::is_same_v<Q, int8_t>) && std::is_floating_point_v<T>
     Quantized<Q, T>::Quantized(size_t size) : Parameter<T>(size), scale_(1.0f), zero_point_(0.0f) {}
 
     template<typename Q, typename T>
+        requires (std::is_same_v<Q, int16_t> || std::is_same_v<Q, int8_t>) && std::is_floating_point_v<T>
     Quantized<Q, T>::Quantized(const std::span<Q>& data, float scale, float zero_point)
         : Parameter<T>(data.size()), scale_(scale), zero_point_(zero_point) {
 
@@ -104,6 +116,7 @@ namespace agon {
     }
 
     template<typename Q, typename T>
+        requires (std::is_same_v<Q, int16_t> || std::is_same_v<Q, int8_t>) && std::is_floating_point_v<T>
     std::vector<Q> Quantized<Q, T>::quantized() const {
         const auto& vals = this->data();
         std::vector<Q> quantized_data(vals.size());
@@ -124,18 +137,7 @@ namespace agon {
                 auto zero_point_vec = simd::set1<T>(zero_point_cast);
                 auto q_vec = simd::fmadd(val_vec, inv_scale_vec, zero_point_vec);
 
-                if constexpr (simd::IsUpcast<T, Q>) {
-                    constexpr size_t mult = simd::vec<T>::size / simd::vec<Q>::size;
-                    for (size_t j = 0; j < mult; ++j) {
-                        size_t sub_offset = j * simd::vec<Q>::size;
-
-                        auto sub_q_vec = simd::cast<Q, j>(q_vec);
-                        simd::store(&quantized_data[i + offset + sub_offset], sub_q_vec);
-                    }
-                } else {
-                    q_vec = simd::cast<Q>(q_vec);
-                    simd::store(&quantized_data[i + offset], q_vec);
-                }
+                simd::store(&quantized_data[i + offset], simd::cast<Q>(q_vec));
             });
         }
 
@@ -147,6 +149,7 @@ namespace agon {
     }
 
     template<typename Q, typename T>
+        requires (std::is_same_v<Q, int16_t> || std::is_same_v<Q, int8_t>) && std::is_floating_point_v<T>
     std::vector<T> Quantized<Q, T>::fake_quantized() const {
         const auto& vals = this->data();
         std::vector<T> fake_quantized_data(vals.size());
@@ -185,11 +188,13 @@ namespace agon {
     }
 
     template<typename Q, typename T>
+        requires (std::is_same_v<Q, int16_t> || std::is_same_v<Q, int8_t>) && std::is_floating_point_v<T>
     float Quantized<Q, T>::scale() const {
         return scale_;
     }
 
     template<typename Q, typename T>
+        requires (std::is_same_v<Q, int16_t> || std::is_same_v<Q, int8_t>) && std::is_floating_point_v<T>
     float Quantized<Q, T>::zero_point() const {
         return zero_point_;
     }

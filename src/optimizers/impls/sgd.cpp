@@ -6,8 +6,9 @@ namespace agon::optim {
     void SGD<Ts...>::step() {
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param) {
-                using T = typename std::decay_t<decltype(param)>::DataType;
+            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+                auto& param = param_ref.get();
+                using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
 
                 auto& grad = param.grad();
                 auto& data = param.data();
@@ -65,8 +66,9 @@ namespace agon::optim {
         file.read(reinterpret_cast<char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param) {
-                using T = typename std::decay_t<decltype(param)>::DataType;
+            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+                auto& param = param_ref.get();
+                using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                 auto& mom = std::get<std::vector<T>>(state_.momenta);
 
                 file.read(reinterpret_cast<char*>(&param.data()), param.size() * sizeof(T));
@@ -84,8 +86,9 @@ namespace agon::optim {
         file.write(reinterpret_cast<const char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param) {
-                using T = typename std::decay_t<decltype(param)>::DataType;
+            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+                auto& param = param_ref.get();
+                using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                 auto& mom = std::get<std::vector<T>>(state_.momenta);
 
                 file.write(reinterpret_cast<const char*>(&param.data()), param.size() * sizeof(T));

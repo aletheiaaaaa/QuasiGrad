@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../core/parameter.h"
+#include "../parameter.h"
 
 #include <algorithm>
 #include <variant>
