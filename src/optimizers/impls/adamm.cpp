@@ -1,5 +1,3 @@
-#pragma once
-
 #include "agon/optimizers/impls/adamm.h"
 
 #include "agon/detail/simd/ops.h"
@@ -40,8 +38,9 @@ namespace agon::optim {
                         mom_vec = simd::fnmadd(beta1_vec, grad_vec, mom_vec);
 
                         auto beta2_vec = simd::set1<T>(options_.beta2);
-                        vel_vec = simd::fmadd(beta2_vec, vel_vec, simd::mul(grad_vec, grad_vec));
-                        vel_vec = simd::fnmadd(beta2_vec, simd::mul(grad_vec, grad_vec), vel_vec);
+                        auto grad_squared = (options_.use_adazo) ? simd::mul(mom_vec, mom_vec) : simd::mul(grad_vec, grad_vec);
+                        vel_vec = simd::fmadd(beta2_vec, vel_vec, grad_squared);
+                        vel_vec = simd::fnmadd(beta2_vec, grad_squared, vel_vec);
 
                         simd::store(&mom[i + offset], mom_vec);
                         simd::store(&vel[i + offset], vel_vec);
@@ -92,7 +91,7 @@ namespace agon::optim {
                 auto& mom = std::get<std::vector<T>>(state_.momentum);
                 auto& vel = std::get<std::vector<T>>(state_.velocity);
 
-                in.read(reinterpret_cast<char*>(param.data()), param.size() * sizeof(T));
+                in.read(reinterpret_cast<char*>(&param.data()), param.size() * sizeof(T));
                 in.read(reinterpret_cast<char*>(mom.data()), param.size() * sizeof(T));
                 in.read(reinterpret_cast<char*>(vel.data()), param.size() * sizeof(T));
             }), ...);
@@ -114,7 +113,7 @@ namespace agon::optim {
                 auto& mom = std::get<std::vector<T>>(state_.momentum);
                 auto& vel = std::get<std::vector<T>>(state_.velocity);
 
-                out.write(reinterpret_cast<const char*>(param.data()), param.size() * sizeof(T));
+                out.write(reinterpret_cast<const char*>(&param.data()), param.size() * sizeof(T));
                 out.write(reinterpret_cast<const char*>(mom.data()), param.size() * sizeof(T));
                 out.write(reinterpret_cast<const char*>(vel.data()), param.size() * sizeof(T));
             }), ...);

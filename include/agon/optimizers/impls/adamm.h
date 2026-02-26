@@ -12,6 +12,7 @@ namespace agon::optim {
         float epsilon = 1e-8f;
 
         bool maximize = false;
+        bool use_adazo = false;
     };
 
     template<typename DedupedTuple>
