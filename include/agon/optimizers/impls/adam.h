@@ -27,7 +27,7 @@ namespace agon::optim {
             explicit Adam(ParameterPack<Ts...> parameters, AdamParams options = {})
                 : Optimizer<Ts...>(parameters), options_(options) {
                     std::apply([&](auto&... param_vecs) {
-                        (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+                        (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                             auto& param = param_ref.get();
                             using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                             auto& mom = std::get<std::vector<T>>(this->state_.momentum);

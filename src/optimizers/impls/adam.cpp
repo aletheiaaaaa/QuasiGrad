@@ -10,63 +10,62 @@ namespace agon::optim {
     template<typename... Ts>
     void Adam<Ts...>::step() {
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+            (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                 auto& param = param_ref.get();
                 using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
 
-                auto& grad = param.grad();
-                auto& data = param.data();
-                auto& mom = std::get<std::vector<T>>(state_.momentum);
-                auto& vel = std::get<std::vector<T>>(state_.velocity);
+                auto& grad_full = param.grad();
+                auto& data_full = param.data();
+                auto& mom_full = std::get<std::vector<T>>(state_.momentum);
+                auto& vel_full = std::get<std::vector<T>>(state_.velocity);
 
                 constexpr size_t vec_size = simd::vec<T>::size;
                 constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
 
                 size_t i = 0;
-                for (; i + vec_size * unroll_factor <= grad.size(); i += vec_size * unroll_factor) {
+                for (; i + vec_size * unroll_factor <= grad_full.size(); i += vec_size * unroll_factor) {
                     simd::unroll<unroll_factor>([&]<size_t index>() {
                         constexpr size_t offset = index * vec_size;
 
-                        auto grad_vec = simd::load<T>(&grad[i + offset]);
-                        auto mom_vec = simd::load<T>(&mom[i + offset]);
-                        auto vel_vec = simd::load<T>(&vel[i + offset]);
+                        auto grad = simd::load<T>(&grad_full[i + offset]);
+                        auto mom = simd::load<T>(&mom_full[i + offset]);
+                        auto vel = simd::load<T>(&vel_full[i + offset]);
 
-                        if (options_.maximize) grad_vec = simd::neg(grad_vec);
+                        if (options_.maximize) grad = simd::neg(grad);
 
-                        auto beta1_vec = simd::set1<T>(options_.beta1);
-                        mom_vec = simd::fmadd(beta1_vec, mom_vec, grad_vec);
-                        mom_vec = simd::fnmadd(beta1_vec, grad_vec, mom_vec);
+                        auto beta1 = simd::set1<T>(options_.beta1);
+                        mom = simd::fmadd(beta1, mom, grad);
+                        mom = simd::fnmadd(beta1, grad, mom);
 
-                        auto beta2_vec = simd::set1<T>(options_.beta2);
-                        auto grad_squared = (options_.use_adazo) ? simd::mul(mom_vec, mom_vec) : simd::mul(grad_vec, grad_vec);
-                        vel_vec = simd::fmadd(beta2_vec, vel_vec, grad_squared);
-                        vel_vec = simd::fnmadd(beta2_vec, grad_squared, vel_vec);
+                        auto beta2 = simd::set1<T>(options_.beta2);
+                        auto grad_squared = (options_.use_adazo) ? simd::mul(mom, mom) : simd::mul(grad, grad);
+                        vel = simd::fmadd(beta2, vel, grad_squared);
+                        vel = simd::fnmadd(beta2, grad_squared, vel);
 
-                        simd::store(&mom[i + offset], mom_vec);
-                        simd::store(&vel[i + offset], vel_vec);
+                        simd::store(&mom[i + offset], mom);
+                        simd::store(&vel[i + offset], vel);
 
-                        auto epsilon_vec = simd::set1<T>(options_.epsilon);
-                        auto denom_vec = simd::add(simd::sqrt(vel_vec), epsilon_vec);
-                        auto update_vec = simd::div(mom_vec, denom_vec);
+                        auto epsilon = simd::set1<T>(options_.epsilon);
+                        auto update = simd::div(mom, simd::add(simd::sqrt(vel), epsilon));
 
-                        auto lr_vec = simd::set1<T>(options_.lr);
-                        auto data_vec = simd::load<T>(&data[i + offset]);
-                        data_vec = simd::fmadd(lr_vec, update_vec, data_vec);
-                        simd::store(&data[i + offset], data_vec);
+                        auto lr = simd::set1<T>(options_.lr);
+                        auto data = simd::load<T>(&data_full[i + offset]);
+                        data = simd::fmadd(lr, update, data);
+                        simd::store(&data_full[i + offset], data);
                     });
                 }
 
-                for (; i < grad.size(); ++i) {
-                    T grad_val = options_.maximize ? -grad[i] : grad[i];
+                for (; i < grad_full.size(); ++i) {
+                    T grad = options_.maximize ? -grad_full[i] : grad_full[i];
 
-                    T mom_val = options_.beta1 * mom[i] + (1 - options_.beta1) * grad_val;
-                    T vel_val = options_.beta2 * vel[i] + (1 - options_.beta2) * grad_val * grad_val;
+                    T mom = options_.beta1 * mom_full[i] + (1 - options_.beta1) * grad;
+                    T vel = options_.beta2 * vel_full[i] + (1 - options_.beta2) * grad * grad;
 
-                    mom[i] = mom_val;
-                    vel[i] = vel_val;
+                    mom_full[i] = mom;
+                    vel_full[i] = vel;
 
-                    T update = mom_val / (std::sqrt(vel_val) + options_.epsilon);
-                    data[i] += options_.lr * update;
+                    T update = mom / (std::sqrt(vel) + options_.epsilon);
+                    data_full[i] += options_.lr * update;
                 }
             }), ...);
         }, this->parameters_.data);
@@ -85,7 +84,7 @@ namespace agon::optim {
         in.read(reinterpret_cast<char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+            (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                 auto& param = param_ref.get();
                 using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                 auto& mom = std::get<std::vector<T>>(state_.momentum);
@@ -107,7 +106,7 @@ namespace agon::optim {
         out.write(reinterpret_cast<const char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+            (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                 auto& param = param_ref.get();
                 using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                 auto& mom = std::get<std::vector<T>>(state_.momentum);

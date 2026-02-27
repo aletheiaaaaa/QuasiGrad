@@ -10,41 +10,42 @@ namespace agon::optim {
     template<typename... Ts>
     void Spider<Ts...>::step() {
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+            (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                 auto& param = param_ref.get();
                 using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
 
-                auto& grad = param.grad();
-                auto& data = param.data();
-                auto& prev = std::get<std::vector<T>>(state_.prev_grad);
+                auto& grad_full = param.grad();
+                auto& data_full = param.data();
+                auto& prev_full = std::get<std::vector<T>>(state_.prev_grad);
 
                 constexpr size_t vec_size = simd::vec<T>::size;
                 constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
 
                 size_t i = 0;
-                for (; i + vec_size * unroll_factor <= grad.size(); i += vec_size * unroll_factor) {
+                for (; i + vec_size * unroll_factor <= grad_full.size(); i += vec_size * unroll_factor) {
                     simd::unroll<unroll_factor>([&]<size_t index>() {
                         constexpr size_t offset = index * vec_size;
 
-                        auto grad_vec = simd::load<T>(&grad[i + offset]);
-                        auto prev_grad_vec = simd::load<T>(&prev[i + offset]);
+                        auto grad = simd::load<T>(&grad_full[i + offset]);
+                        auto prev_grad = simd::load<T>(&prev_full[i + offset]);
 
-                        if (options_.maximize) grad_vec = simd::neg(grad_vec);
+                        if (options_.maximize) grad = simd::neg(grad);
 
-                        auto update_vec = simd::sub(grad_vec, prev_grad_vec);
-                        auto data_vec = simd::load<T>(&data[i + offset]);
-                        data_vec = simd::add(update_vec, data_vec);
+                        auto update = simd::sub(grad, prev_grad);
+                        auto data = simd::load<T>(&data_full[i + offset]);
+                        data = simd::add(update, data);
 
-                        simd::store(&data[i + offset], data_vec);
-                        simd::store(&prev[i + offset], grad_vec);
+                        simd::store(&data_full[i + offset], data);
+                        simd::store(&prev_full[i + offset], grad);
                     });
                 }
 
-                for (; i < grad.size(); ++i) {
-                    T grad_val = options_.maximize ? -grad[i] : grad[i];
-                    T update_val = grad_val - prev[i];
-                    data[i] += update_val;
-                    prev[i] = grad_val;
+                for (; i < grad_full.size(); ++i) {
+                    T grad = options_.maximize ? -grad_full[i] : grad_full[i];
+                    T update = grad - prev_full[i];
+
+                    data_full[i] += update;
+                    prev_full[i] = grad;
                 }
             }), ...);
         }, this->parameters_.data);
@@ -63,7 +64,7 @@ namespace agon::optim {
         in.read(reinterpret_cast<char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+            (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                 auto& param = param_ref.get();
                 using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                 auto& prev_grad = std::get<std::vector<T>>(state_.prev_grad);
@@ -83,7 +84,7 @@ namespace agon::optim {
         out.write(reinterpret_cast<const char*>(&state_.step), sizeof(state_.step));
 
         std::apply([&](auto&... param_vecs) {
-            (std::ranges::for_each(param_vecs.begin(), param_vecs.end(), [&](auto& param_ref) {
+            (std::ranges::for_each(param_vecs, [&](auto& param_ref) {
                 auto& param = param_ref.get();
                 using T = typename std::unwrap_ref_decay_t<decltype(param)>::DataType;
                 auto& prev_grad = std::get<std::vector<T>>(state_.prev_grad);
