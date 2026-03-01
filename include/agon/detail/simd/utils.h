@@ -11,7 +11,7 @@
 
 namespace agon::simd {
   template<typename F, typename T>
-  concept IsUpcast = simd::vec<F>::size < simd::vec<T>::size;
+  concept IsUpcast = Vec<CURRENT_ARCH, F>::size < simd::Vec<CURRENT_ARCH, T>::size;
 
   constexpr int UNROLL_FACTOR = 
     (CURRENT_ARCH == Arch::AVX512) ? 4 :

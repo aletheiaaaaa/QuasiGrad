@@ -17,5 +17,6 @@
 #include "ops/store.h"
 #include "ops/set1.h"
 #include "ops/setzero.h"
-#include "ops/round.h"
 #include "ops/cast.h"
+#include "ops/gather.h"
+#include "ops/scatter.h"

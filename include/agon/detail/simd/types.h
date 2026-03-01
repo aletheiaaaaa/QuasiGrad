@@ -14,203 +14,174 @@
 #endif
 
 namespace agon::simd {
-  template<Arch arch>
-  struct VecI8;
+  template<Arch arch, typename T>
+  struct Vec;
 
-  template<Arch arch>
-  struct VecI16;
-
-  template<Arch arch>
-  struct VecF32;
-
-  template<Arch arch>
-  struct VecF64;
 #if defined(__AVX512F__)
   template<>
-  struct VecI8<Arch::AVX512> {
+  struct Vec<Arch::AVX512, int8_t> {
     using scalar_type = int8_t;
+    using is_vec = std::true_type;
     static constexpr size_t size = 64;
     __m512i data;
 
-    VecI8() = default;
-    explicit VecI8(__m512i val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m512i val) : data(val) {}
   };
 
   template<>
-  struct VecI16<Arch::AVX512> {
+  struct Vec<Arch::AVX512, int16_t> {
     using scalar_type = int16_t;
     static constexpr size_t size = 32;
     __m512i data;
 
-    VecI16() = default;
-    explicit VecI16(__m512i val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m512i val) : data(val) {}
   };
 
   template<>
-  struct VecF32<Arch::AVX512> {
+  struct Vec<Arch::AVX512, float> {
     using scalar_type = float;
     static constexpr size_t size = 16;
     __m512 data;
 
-    VecF32() = default;
-    explicit VecF32(__m512 val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m512 val) : data(val) {}
   };
 
   template<>
-  struct VecF64<Arch::AVX512> {
+  struct Vec<Arch::AVX512, double> {
     using scalar_type = double;
     static constexpr size_t size = 8;
     __m512d data;
 
-    VecF64() = default;
-    explicit VecF64(__m512d val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m512d val) : data(val) {}
   };
 #elif defined(__AVX2__)
   template<>
-  struct VecI8<Arch::AVX2> {
+  struct Vec<Arch::AVX2, int8_t> {
     using scalar_type = int8_t;
     static constexpr size_t size = 32;
     __m256i data;
 
-    VecI8() = default;
-    explicit VecI8(__m256i val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m256i val) : data(val) {}
   };
 
   template<>
-  struct VecI16<Arch::AVX2> {
+  struct Vec<Arch::AVX2, int16_t> {
     using scalar_type = int16_t;
     static constexpr size_t size = 16;
     __m256i data;
 
-    VecI16() = default;
-    explicit VecI16(__m256i val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m256i val) : data(val) {}
   };
 
   template<>
-  struct VecF32<Arch::AVX2> {
+  struct Vec<Arch::AVX2, float> {
     using scalar_type = float;
     static constexpr size_t size = 8;
     __m256 data;
 
-    VecF32() = default;
-    explicit VecF32(__m256 val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m256 val) : data(val) {}
   };
 
   template<>
-  struct VecF64<Arch::AVX2> {
+  struct Vec<Arch::AVX2, double> {
     using scalar_type = double;
     static constexpr size_t size = 4;
     __m256d data;
 
-    VecF64() = default;
-    explicit VecF64(__m256d val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m256d val) : data(val) {}
   };
 #elif defined(__SSE4_1__)
   template<>
-  struct VecI8<Arch::SSE4_1> {
+  struct Vec<Arch::SSE4_1, int8_t> {
     using scalar_type = int8_t;
     static constexpr size_t size = 16;
     __m128i data;
 
-    VecI8() = default;
-    explicit VecI8(__m128i val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m128i val) : data(val) {}
   };
 
   template<>
-  struct VecI16<Arch::SSE4_1> {
+  struct Vec<Arch::SSE4_1, int16_t> {
     using scalar_type = int16_t;
     static constexpr size_t size = 8;
     __m128i data;
 
-    VecI16() = default;
-    explicit VecI16(__m128i val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m128i val) : data(val) {}
   };
 
   template<>
-  struct VecF32<Arch::SSE4_1> {
+  struct Vec<Arch::SSE4_1, float> {
     using scalar_type = float;
     static constexpr size_t size = 4;
     __m128 data;
 
-    VecF32() = default;
-    explicit VecF32(__m128 val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m128 val) : data(val) {}
   };
 
   template<>
-  struct VecF64<Arch::SSE4_1> {
+  struct Vec<Arch::SSE4_1, double> {
     using scalar_type = double;
     static constexpr size_t size = 2;
     __m128d data;
 
-    VecF64() = default;
-    explicit VecF64(__m128d val) : data(val) {}
+    Vec() = default;
+    explicit Vec(__m128d val) : data(val) {}
   };
 #else
   template<>
-  struct VecI8<Arch::GENERIC> {
+  struct Vec<Arch::GENERIC, int8_t> {
     using scalar_type = int8_t;
     static constexpr size_t size = 1;
     int8_t data;
 
-    VecI8() = default;
-    explicit VecI8(int8_t val) : data(val) {}
+    Vec() = default;
+    explicit Vec(int8_t val) : data(val) {}
   };
 
   template<>
-  struct VecI16<Arch::GENERIC> {
+  struct Vec<Arch::GENERIC, int16_t> {
     using scalar_type = int16_t;
     static constexpr size_t size = 1;
     int16_t data;
 
-    VecI16() = default;
-    explicit VecI16(int16_t val) : data(val) {}
+    Vec() = default;
+    explicit Vec(int16_t val) : data(val) {}
   };
 
   template<>
-  struct VecF32<Arch::GENERIC> {
+  struct Vec<Arch::GENERIC, float> {
     using scalar_type = float;
     static constexpr size_t size = 1;
     float data;
 
-    VecF32() = default;
-    explicit VecF32(float val) : data(val) {}
+    Vec() = default;
+    explicit Vec(float val) : data(val) {}
   };
 
   template<>
-  struct VecF64<Arch::GENERIC> {
+  struct Vec<Arch::GENERIC, double> {
     using scalar_type = double;
     static constexpr size_t size = 1;
     double data;
 
-    VecF64() = default;
-    explicit VecF64(double val) : data(val) {}
+    Vec() = default;
+    explicit Vec(double val) : data(val) {}
   };
 #endif
 
-  template<typename T, Arch arch>
-  struct VecType;
-
-  template<Arch arch> struct VecType<int8_t, arch> { using type = VecI8<arch>; };
-  template<Arch arch> struct VecType<int16_t, arch> { using type = VecI16<arch>; };
-  template<Arch arch> struct VecType<float, arch> { using type = VecF32<arch>; };
-  template<Arch arch> struct VecType<double, arch> { using type = VecF64<arch>; };
-
   template<typename T>
-  using vec = typename VecType<T, CURRENT_ARCH>::type;
-
-  template<typename T>
-  concept ScalarCastable = std::is_same_v<T, int8_t>
+  concept IsOperable = std::is_same_v<T, int8_t>
     || std::is_same_v<T, int16_t> || std::is_same_v<T, float>
     || std::is_same_v<T, double>;
-
-  template<typename T>
-  struct is_vec : std::false_type {};
-
-  template<Arch arch> struct is_vec<VecI8<arch>> : std::true_type {};
-  template<Arch arch> struct is_vec<VecI16<arch>> : std::true_type {};
-  template<Arch arch> struct is_vec<VecF32<arch>> : std::true_type {};
-  template<Arch arch> struct is_vec<VecF64<arch>> : std::true_type {};
-
-  template<typename T>
-  concept IsVec = is_vec<T>::value;
 }
