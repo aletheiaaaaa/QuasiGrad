@@ -129,7 +129,7 @@ namespace agon::optim {
         in.read(reinterpret_cast<char*>(&options_), sizeof(options_));
         in.read(reinterpret_cast<char*>(&state_.step), sizeof(state_.step));
 
-        [&]<size_t... Is>(std::index_sequence<Is...>) {
+        auto read_param = [&]<size_t... Is>(std::index_sequence<Is...>) {
           ([&]<size_t I>() {
             auto& param_vec = std::get<I>(this->parameters_.data);
             auto& mom = std::get<I>(state_.momentum);
@@ -145,7 +145,9 @@ namespace agon::optim {
               state_offset += param.numel();
             }
           }.template operator()<Is>(), ...);
-        }(std::make_index_sequence<sizeof...(Ts)>{});
+        };
+
+        read_param(std::make_index_sequence<sizeof...(Ts)>{});
       }
 
       void save_to_bin(const std::string& path_str) const override {
@@ -156,7 +158,7 @@ namespace agon::optim {
         out.write(reinterpret_cast<const char*>(&options_), sizeof(options_));
         out.write(reinterpret_cast<const char*>(&state_.step), sizeof(state_.step));
 
-        [&]<size_t... Is>(std::index_sequence<Is...>) {
+        auto write_param = [&]<size_t... Is>(std::index_sequence<Is...>) {
           ([&]<size_t I>() {
             auto& param_vec = std::get<I>(this->parameters_.data);
             auto& mom = std::get<I>(state_.momentum);
@@ -172,7 +174,9 @@ namespace agon::optim {
               state_offset += param.numel();
             }
           }.template operator()<Is>(), ...);
-        }(std::make_index_sequence<sizeof...(Ts)>{});
+        };
+
+        write_param(std::make_index_sequence<sizeof...(Ts)>{});
       }
 
     private:
