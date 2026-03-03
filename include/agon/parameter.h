@@ -17,7 +17,6 @@
 #include <functional>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 
 #include "detail/simd/utils.h"
 #include "detail/simd/ops.h"
@@ -590,8 +589,6 @@ namespace agon {
       requires (std::derived_from<Ts, Parameter<typename Ts::DataType>> && ...)
     ParameterPack(Ts&... params) {
       (std::get<RefVec<Ts>>(data).emplace_back(params), ...);
-      std::cout << "ParameterPack created with parameters of types: " 
-                << (typeid(Ts).name() + std::string(", ") + ... + "") << "\n";
     }
 
     template<typename T>
