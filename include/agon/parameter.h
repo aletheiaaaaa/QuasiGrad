@@ -596,7 +596,7 @@ namespace agon {
   template<typename... Ts>
   ParameterPack(Ts&...) -> ParameterPack<detail::Canonicalized_t<std::decay_t<Ts>...>>;
 
-  template<typename T, typename IsQuantized = std::false_type>
+  template<typename T, typename TypeTuple>
   struct TaggedVector : private std::vector<T> {
     using std::vector<T>::vector;
     using std::vector<T>::operator=;
@@ -613,9 +613,9 @@ namespace agon {
   template<typename T>
   struct ExtractType {};
   template<typename T>
-  struct ExtractType<Parameter<T>> { using Type = TaggedVector<T, std::false_type>; };
+  struct ExtractType<Parameter<T>> { using Type = TaggedVector<T, std::tuple<T>>; };
   template<typename Q, typename T>
-  struct ExtractType<Quantized<Q, T>> { using Type = TaggedVector<T, std::true_type>; };
+  struct ExtractType<Quantized<Q, T>> { using Type = TaggedVector<T, std::tuple<Q, T>>; };
   template<typename T>
   using ExtractType_t = typename ExtractType<T>::Type;
 
