@@ -1,10 +1,8 @@
 #pragma once
 
-#include "../parameter.h"
+#include "../parameter.hpp"
 
 #include <algorithm>
-#include <variant>
-#include <vector>
 #include <cstdint>
 
 namespace agon::optim {

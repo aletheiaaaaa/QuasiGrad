@@ -2,13 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <concepts>
 #include <stdexcept>
-#include <typeinfo>
 
 #include <eve/wide.hpp>
 
-#include "arch.h"
+#include "arch.hpp"
 
 namespace agon::simd {
   template<typename F, typename T>

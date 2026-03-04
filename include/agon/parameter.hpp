@@ -1,11 +1,9 @@
 #pragma once
 
 #include <vector>
-#include <array>
 #include <cstdint>
 #include <cstddef>
 #include <string>
-#include <typeinfo>
 #include <span>
 #include <limits>
 #include <ranges>
@@ -20,9 +18,9 @@
 
 #include <eve/module/core.hpp>
 
-#include "detail/utils.h"
-#include "detail/dedup.h"
-#include "detail/unpack.h"
+#include "detail/utils.hpp"
+#include "detail/dedup.hpp"
+#include "detail/unpack.hpp"
 
 namespace agon {
   struct Slice {

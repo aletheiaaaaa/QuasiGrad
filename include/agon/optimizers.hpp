@@ -1,7 +1,7 @@
 #pragma once
 
-#include "optimizers/impls/sgd.h"
-#include "optimizers/impls/adam.h"
-#include "optimizers/impls/sarah.h"
-#include "optimizers/impls/lion.h"
-#include "optimizers/impls/svrg.h"
+#include "optimizers/impls/sgd.hpp"
+#include "optimizers/impls/adam.hpp"
+#include "optimizers/impls/sarah.hpp"
+#include "optimizers/impls/lion.hpp"
+#include "optimizers/impls/svrg.hpp"

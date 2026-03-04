@@ -1,12 +1,11 @@
 #pragma once
 
-#include "../optimizer.h"
-#include "../../detail/utils.h"
+#include "../optimizer.hpp"
+#include "../../detail/utils.hpp"
 
 #include <eve/module/core.hpp>
 
 #include <cstring>
-#include <algorithm>
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
