@@ -12,9 +12,10 @@ option(AGON_ENABLE_AVX512 "Enable AVX512 instructions (if available)" ON)
 option(AGON_ENABLE_AVX2 "Enable AVX2 instructions (if available)" ON)
 option(AGON_ENABLE_SSE4 "Enable SSE4.1 instructions (if available)" ON)
 
+include(FetchContent)
+
 find_package(eve QUIET)
 if(NOT eve_FOUND)
-  include(FetchContent)
   FetchContent_Declare(
     eve
     GIT_REPOSITORY https://github.com/jfalcou/eve.git
@@ -26,6 +27,19 @@ if(NOT eve_FOUND)
   set(EVE_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(eve)
   set(AGON_EVE_FETCHED TRUE)
+endif()
+
+find_package(cereal QUIET)
+if(NOT cereal_FOUND)
+  FetchContent_Declare(
+    cereal
+    GIT_REPOSITORY https://github.com/USCiLab/cereal.git
+    GIT_TAG v1.3.2
+    EXCLUDE_FROM_ALL
+  )
+  set(JUST_INSTALL_CEREAL ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(cereal)
+  set(AGON_CEREAL_FETCHED TRUE)
 endif()
 
 # Header-only library target
@@ -46,6 +60,12 @@ if(AGON_EVE_FETCHED)
   target_include_directories(agon INTERFACE $<BUILD_INTERFACE:${eve_SOURCE_DIR}/include>)
 else()
   target_link_libraries(agon INTERFACE eve::eve)
+endif()
+
+if(AGON_CEREAL_FETCHED)
+  target_include_directories(agon INTERFACE $<BUILD_INTERFACE:${cereal_SOURCE_DIR}/include>)
+else()
+  target_link_libraries(agon INTERFACE cereal::cereal)
 endif()
 
 # Compiler-specific settings
@@ -104,6 +124,12 @@ install(DIRECTORY include/agon
 
 if(AGON_EVE_FETCHED)
   install(DIRECTORY ${eve_SOURCE_DIR}/include/eve
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+endif()
+
+if(AGON_CEREAL_FETCHED)
+  install(DIRECTORY ${cereal_SOURCE_DIR}/include/cereal
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 endif()

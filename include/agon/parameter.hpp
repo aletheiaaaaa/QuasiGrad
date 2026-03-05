@@ -10,13 +10,16 @@
 #include <cassert>
 #include <numeric>
 #include <cmath>
-#include <cstring>
 #include <algorithm>
 #include <functional>
 #include <filesystem>
 #include <fstream>
 
 #include <eve/module/core.hpp>
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/tuple.hpp>
 
 #include "detail/utils.hpp"
 #include "detail/dedup.hpp"
@@ -417,18 +420,18 @@ namespace agon {
       }
 
       virtual void save_to_bin(const std::string& path_str, bool include_metadata = true) const {
-        std::filesystem::path path(path_str + ".bin");
-        std::ofstream out(path, std::ios::binary);
+        std::filesystem::path path(path_str);
+        path.replace_extension(".bin");
 
+        std::ofstream out(path, std::ios::binary);
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
+        cereal::BinaryOutputArchive ar(out);
         if (include_metadata) {
-          size_t rank = shape_.size();
-          out.write(dtype_name(), std::strlen(dtype_name()) + 1);
-          out.write(reinterpret_cast<const char*>(&rank), sizeof(rank));
-          out.write(reinterpret_cast<const char*>(shape_.data()), shape_.size() * sizeof(size_t));
+          std::string dtype(dtype_name());
+          ar(dtype, shape_);
         }
-        out.write(reinterpret_cast<const char*>(data_.data()), data_.size() * sizeof(T));
+        ar(data_);
       }
 
     protected:
@@ -577,25 +580,24 @@ namespace agon {
       float zero_point() const { return zero_point_; }
 
       void save_to_bin(const std::string& path_str, bool dequantize = false, bool include_metadata = true) const {
-        std::filesystem::path path(path_str + ".bin");
+        std::filesystem::path path(path_str);
+        path.replace_extension(".bin");
+
         std::ofstream out(path, std::ios::binary);
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
+        cereal::BinaryOutputArchive ar(out);
         if (include_metadata) {
-          size_t rank = this->shape_.size();
-          out.write(qtype_name(), std::strlen(qtype_name()) + 1);
-          out.write(this->dtype_name(), std::strlen(this->dtype_name()) + 1);
-          out.write(reinterpret_cast<const char*>(&rank), sizeof(rank));
-          out.write(reinterpret_cast<const char*>(this->shape_.data()), this->shape_.size() * sizeof(size_t));
-          out.write(reinterpret_cast<const char*>(&scale_), sizeof(scale_));
-          out.write(reinterpret_cast<const char*>(&zero_point_), sizeof(zero_point_));
+          std::string qtype(qtype_name());
+          std::string dtype(this->dtype_name());
+          ar(qtype, dtype, this->shape_, scale_, zero_point_);
         }
         if (dequantize) {
-          std::vector<T> data = fake_quantized();
-          out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(T));
+          auto data = fake_quantized();
+          ar(data);
         } else {
-          std::vector<Q> data = quantized();
-          out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(Q));
+          auto data = quantized();
+          ar(data);
         }
       }
 
@@ -647,6 +649,16 @@ namespace agon {
 
     TaggedVector(std::vector<T>&& v) : std::vector<T>(std::move(v)) {}
     TaggedVector(const std::vector<T>& v) : std::vector<T>(v) {}
+
+    template<class Archive>
+    void save(Archive& ar) const {
+      ar(static_cast<const std::vector<T>&>(*this));
+    }
+
+    template<class Archive>
+    void load(Archive& ar) {
+      ar(static_cast<std::vector<T>&>(*this));
+    }
   };
 
   template<typename T>

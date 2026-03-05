@@ -5,7 +5,6 @@
 
 #include <eve/module/core.hpp>
 
-#include <cstring>
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
@@ -17,6 +16,11 @@ namespace agon::optim {
     int recompute_every = 64;
 
     bool maximize = false;
+
+    template<class Archive>
+    void serialize(Archive& ar) {
+      ar(lr, recompute_every, maximize);
+    }
   };
 
   template<typename DedupedTuple>
@@ -131,63 +135,45 @@ namespace agon::optim {
       }
 
       void load_from_bin(const std::string& path_str) override {
-        std::filesystem::path path(path_str + ".bin");
+        std::filesystem::path path(path_str);
+        path.replace_extension(".bin");
+
+        if (!std::filesystem::exists(path)) throw std::runtime_error("File not found: " + path_str);
+
         std::ifstream in(path, std::ios::binary);
         if (!in) throw std::runtime_error("Failed to open file: " + path_str);
 
+        cereal::BinaryInputArchive ar(in);
         std::string name;
-        std::getline(in, name, '\0');
+        ar(name);
         if (name != optimizer_name()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_name()));
 
-        in.read(reinterpret_cast<char*>(&options_), sizeof(options_));
-        in.read(reinterpret_cast<char*>(&state_.step), sizeof(state_.step));
+        ar(options_, state_.step, state_.ref_exact, state_.ref_est);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& ref_exact = std::get<ExtractType_t<ParamType>>(state_.ref_exact);
-            auto& ref_est = std::get<ExtractType_t<ParamType>>(state_.ref_est);
-
-            size_t state_offset = 0;
             for (auto& param_ref : param_vec) {
-              auto& param = param_ref.get();
-              using T = typename ParamType::DataType;
-              in.read(reinterpret_cast<char*>(param.data().data()), param.numel() * sizeof(T));
-              if ((options_.recompute_every != -1)) {
-                in.read(reinterpret_cast<char*>(ref_exact.data() + state_offset), param.numel() * sizeof(T));
-                in.read(reinterpret_cast<char*>(ref_est.data() + state_offset), param.numel() * sizeof(T));
-              }
-              state_offset += param.numel();
+              ar(param_ref.get().data());
             }
           }(param_vecs), ...);
         }, this->parameters_.data);
       }
 
       void save_to_bin(const std::string& path_str) const override {
-        std::filesystem::path path(path_str + ".bin");
+        std::filesystem::path path(path_str);
+        path.replace_extension(".bin");
+
         std::ofstream out(path, std::ios::binary);
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
-        out.write(optimizer_name(), std::strlen(optimizer_name()) + 1);
-        out.write(reinterpret_cast<const char*>(&options_), sizeof(options_));
-        out.write(reinterpret_cast<const char*>(&state_.step), sizeof(state_.step));
+        cereal::BinaryOutputArchive ar(out);
+        std::string name(optimizer_name());
+        ar(name, options_, state_.step, state_.ref_exact, state_.ref_est);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& ref_exact = std::get<ExtractType_t<ParamType>>(state_.ref_exact);
-            auto& ref_est = std::get<ExtractType_t<ParamType>>(state_.ref_est);
-
-            size_t state_offset = 0;
             for (auto& param_ref : param_vec) {
-              auto& param = param_ref.get();
-              using T = typename ParamType::DataType;
-              out.write(reinterpret_cast<const char*>(param.data().data()), param.numel() * sizeof(T));
-              if ((options_.recompute_every != -1)) {
-                out.write(reinterpret_cast<const char*>(ref_exact.data() + state_offset), param.numel() * sizeof(T));
-                out.write(reinterpret_cast<const char*>(ref_est.data() + state_offset), param.numel() * sizeof(T));
-              }
-              state_offset += param.numel();
+              ar(param_ref.get().data());
             }
           }(param_vecs), ...);
         }, this->parameters_.data);
