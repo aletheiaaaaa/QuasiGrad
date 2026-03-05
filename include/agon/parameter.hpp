@@ -635,7 +635,7 @@ namespace agon {
     }
   };
   template<typename... Ts>
-  ParameterPack(Ts&...) -> ParameterPack<detail::Canonicalized_t<std::decay_t<Ts>...>>;
+  ParameterPack(Ts&...) -> ParameterPack<detail::DeduplicatedPack_t<std::decay_t<Ts>...>>;
 
   template<typename T, typename TypeTuple>
   struct TaggedVector : private std::vector<T> {

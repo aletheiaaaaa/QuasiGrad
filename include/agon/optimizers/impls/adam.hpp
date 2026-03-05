@@ -153,6 +153,10 @@ namespace agon::optim {
         ar(name);
         if (name != optimizer_name()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_name()));
 
+        std::string dtype_str;
+        ar(dtype_str);
+        if (dtype_str != dtypes()) throw std::runtime_error("Optimizer data type mismatch: expected " + std::string(dtypes()));
+
         ar(options_, state_.step, state_.momentum, state_.velocity);
 
         std::apply([&](auto&... param_vecs) {
@@ -173,8 +177,9 @@ namespace agon::optim {
 
         cereal::BinaryOutputArchive ar(out);
         std::string name(optimizer_name());
-        ar(name, options_, state_.step, state_.momentum, state_.velocity);
+        std::string dtype_str(dtypes());
 
+        ar(name, dtype_str, options_, state_.step, state_.momentum, state_.velocity);
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             for (auto& param_ref : param_vec) {
@@ -190,5 +195,6 @@ namespace agon::optim {
       int num_proc_;
 
       static constexpr const char* optimizer_name() { return "adam\0"; }
+      static constexpr const char* dtypes() { return (std::string_view(typeid(Ts).name()) + ...); }
   };
 }
