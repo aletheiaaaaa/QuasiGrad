@@ -105,157 +105,159 @@ namespace agon {
   template<typename T>
     requires std::is_floating_point_v<T>
   struct View {
-    using is_param_like = std::true_type;
-    using DataType = T;
+    public: 
+      using is_param_like = std::true_type;
+      using DataType = T;
 
-    std::reference_wrapper<Parameter<std::remove_const_t<T>>> ref;
-    size_t offset;
-    std::vector<size_t> shape;
-    std::vector<size_t> strides;
-    std::vector<int> indices;
+      template<typename... Args>
+        requires (std::convertible_to<Args, Slice> && ...)
+      View<T> operator[](Args... args) {
+        std::vector<Slice> slices{args...};
+        assert((slices.size() <= shape_.size()) && "There cannot be more slices than dimensions");
+        while (slices.size() < shape_.size()) {
+          slices.emplace_back();
+        }
 
-    std::vector<int>& ensure_indices() {
-      if (indices.empty() && !shape.empty()) {
-        indices = detail::compute_indices(offset, shape, strides);
-      }
-      return indices;
-    }
-
-    template<typename... Args>
-      requires (std::convertible_to<Args, Slice> && ...)
-    View<T> operator[](Args... args) {
-      std::vector<Slice> slices{args...};
-      assert((slices.size() <= shape.size()) && "There cannot be more slices than dimensions");
-      while (slices.size() < shape.size()) {
-        slices.emplace_back();
+        auto params = detail::compute_view(slices, shape_, strides_);
+        return View<T>{
+          .ref = ref_,
+          .offset = offset_ + params.offset,
+          .shape = std::move(params.shape),
+          .strides = std::move(params.strides),
+        };
       }
 
-      auto params = detail::compute_view(slices, shape, strides);
-      return View<T>{
-        .ref = ref,
-        .offset = offset + params.offset,
-        .shape = std::move(params.shape),
-        .strides = std::move(params.strides),
-      };
-    }
+      template<typename... Args>
+        requires (std::convertible_to<Args, Slice> && ...)
+      const View<const T> operator[](Args... args) const {
+        std::vector<Slice> slices{args...};
+        assert((slices.size() <= shape_.size()) && "There cannot be more slices than dimensions");
+        while (slices.size() < shape_.size()) {
+          slices.emplace_back();
+        }
 
-    template<typename... Args>
-      requires (std::convertible_to<Args, Slice> && ...)
-    const View<const T> operator[](Args... args) const {
-      std::vector<Slice> slices{args...};
-      assert((slices.size() <= shape.size()) && "There cannot be more slices than dimensions");
-      while (slices.size() < shape.size()) {
-        slices.emplace_back();
+        auto params = detail::compute_view(slices, shape_, strides_);
+        return View<const T>{
+          .ref = std::cref(ref_.get()),
+          .offset = offset_ + params.offset,
+          .shape = std::move(params.shape),
+          .strides = std::move(params.strides),
+        };
       }
 
-      auto params = detail::compute_view(slices, shape, strides);
-      return View<const T>{
-        .ref = std::cref(ref.get()),
-        .offset = offset + params.offset,
-        .shape = std::move(params.shape),
-        .strides = std::move(params.strides),
-      };
-    }
-
-    std::vector<T> materialize() {
-      auto& idx = ensure_indices();
-      std::vector<T> result(numel());
-
-      constexpr size_t vec_size = eve::wide<T>::size();
-      const size_t unroll_factor = detail::UNROLL_FACTOR;
-
-      int i = 0;
-      for (; i + vec_size * unroll_factor <= result.size(); i += vec_size * unroll_factor) {
-        detail::unroll<unroll_factor>([&]<size_t index>() {
-          constexpr size_t off = index * vec_size;
-
-          eve::wide<int32_t, eve::fixed<vec_size>> idx_wide(&idx[i + off]);
-          auto vals = eve::gather(data().data(), idx_wide);
-          eve::store(vals, &result[i + off]);
-        });
-      }
-
-      for (; i < numel(); ++i) {
-        result[i] = data()[idx[i]];
-      }
-
-      return result;
-    }
-
-    void fill(const std::span<T>& new_data) {
-      assert(new_data.size() == numel() && "Data size does not match view size");
-      auto& idx = ensure_indices();
-
-      constexpr size_t vec_size = eve::wide<T>::size();
-      const size_t unroll_factor = detail::UNROLL_FACTOR;
-
-      int i = 0;
-      for (; i + vec_size * unroll_factor <= new_data.size(); i += vec_size * unroll_factor) {
-        detail::unroll<unroll_factor>([&]<size_t index>() {
-          constexpr size_t off = index * vec_size;
-
-          eve::wide<T> vals(&new_data[i + off]);
-          for (size_t k = 0; k < vec_size; ++k) {
-            data()[idx[i + off + k]] = vals.get(k);
-          }
-      });
-      }
-
-      for (; i < new_data.size(); ++i) {
-        data()[idx[i]] = new_data[i];
-      }
-    }
-
-    template<typename S>
-      requires detail::NestedSpan<S, T>
-    View& operator=(const S& new_data) {
-      auto new_shape = detail::deduce_shape(new_data);
-      assert(new_shape == shape && "Cannot assign to view with data of different shape");
-      auto& idx = ensure_indices();
-
-      detail::fill(new_data, new_shape, [&](const auto& leaf, size_t offset) {
-        int i = 0;
+      std::vector<T> materialize() {
+        auto& idx = ensure_indices();
+        std::vector<T> result(numel());
 
         constexpr size_t vec_size = eve::wide<T>::size();
-        constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
+        const size_t unroll_factor = detail::UNROLL_FACTOR;
 
-        for (; i + vec_size * unroll_factor <= leaf.size(); i += vec_size * unroll_factor) {
+        int i = 0;
+        for (; i + vec_size * unroll_factor <= result.size(); i += vec_size * unroll_factor) {
           detail::unroll<unroll_factor>([&]<size_t index>() {
             constexpr size_t off = index * vec_size;
 
-            eve::wide<T> vals(&leaf[i + off]);
-            for (size_t k = 0; k < vec_size; ++k) {
-              data()[idx[offset + i + off + k]] = vals.get(k);
-            }
+            eve::wide<int32_t, eve::fixed<vec_size>> idx_wide(&idx[i + off]);
+            auto vals = eve::gather(data().data(), idx_wide);
+            eve::store(vals, &result[i + off]);
           });
         }
-        for (; i < leaf.size(); ++i) {
-          data()[idx[offset + i]] = leaf[i];
+
+        for (; i < numel(); ++i) {
+          result[i] = data()[idx[i]];
         }
-      });
-      return *this;
-    }
 
-    std::vector<T>& grad() { return ref.get().grad(); }
-    const std::vector<T>& grad() const { return ref.get().grad(); }
-
-    std::vector<T>& data() { return ref.get().data(); }
-    const std::vector<T>& data() const { return ref.get().data(); }
-
-    size_t rank() const { return shape.size(); }
-
-    size_t numel() const {
-      return std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<size_t>{});
-    }
-
-    bool is_contiguous() const {
-      size_t expected_stride = 1;
-      for (size_t i = shape.size(); i-- > 0; ) {
-        if (strides[i] != expected_stride) return false;
-        expected_stride *= shape[i];
+        return result;
       }
-      return true;
-    }
+
+      void fill(const std::span<T>& new_data) {
+        assert(new_data.size() == numel() && "Data size does not match view size");
+        auto& idx = ensure_indices();
+
+        constexpr size_t vec_size = eve::wide<T>::size();
+        const size_t unroll_factor = detail::UNROLL_FACTOR;
+
+        int i = 0;
+        for (; i + vec_size * unroll_factor <= new_data.size(); i += vec_size * unroll_factor) {
+          detail::unroll<unroll_factor>([&]<size_t index>() {
+            constexpr size_t off = index * vec_size;
+
+            eve::wide<T> vals(&new_data[i + off]);
+            for (size_t k = 0; k < vec_size; ++k) {
+              data()[idx[i + off + k]] = vals.get(k);
+            }
+        });
+        }
+
+        for (; i < new_data.size(); ++i) {
+          data()[idx[i]] = new_data[i];
+        }
+      }
+
+      template<typename S>
+        requires detail::NestedSpan<S, T>
+      View& operator=(const S& new_data) {
+        auto new_shape = detail::deduce_shape(new_data);
+        assert(new_shape == shape_ && "Cannot assign to view with data of different shape");
+        auto& idx = ensure_indices();
+
+        detail::fill(new_data, new_shape, [&](const auto& leaf, size_t offset) {
+          int i = 0;
+
+          constexpr size_t vec_size = eve::wide<T>::size();
+          constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
+
+          for (; i + vec_size * unroll_factor <= leaf.size(); i += vec_size * unroll_factor) {
+            detail::unroll<unroll_factor>([&]<size_t index>() {
+              constexpr size_t off = index * vec_size;
+
+              eve::wide<T> vals(&leaf[i + off]);
+              for (size_t k = 0; k < vec_size; ++k) {
+                data()[idx[offset + i + off + k]] = vals.get(k);
+              }
+            });
+          }
+          for (; i < leaf.size(); ++i) {
+            data()[idx[offset + i]] = leaf[i];
+          }
+        });
+        return *this;
+      }
+
+      std::vector<T>& grad() { return ref_.get().grad(); }
+      const std::vector<T>& grad() const { return ref_.get().grad(); }
+
+      std::vector<T>& data() { return ref_.get().data(); }
+      const std::vector<T>& data() const { return ref_.get().data(); }
+
+      size_t rank() const { return shape_.size(); }
+
+      size_t numel() const {
+        return std::accumulate(shape_.begin(), shape_.end(), size_t{1}, std::multiplies<size_t>{});
+      }
+
+    private:
+      std::reference_wrapper<Parameter<std::remove_const_t<T>>> ref_;
+      size_t offset_;
+      std::vector<size_t> shape_;
+      std::vector<size_t> strides_;
+      std::vector<int> indices_;
+
+      std::vector<int>& ensure_indices() {
+        if (indices_.empty() && !shape_.empty()) {
+          indices_ = detail::compute_indices(offset_, shape_, strides_);
+        }
+        return indices_;
+      }
+
+      bool is_contiguous() const {
+        size_t expected_stride = 1;
+        for (size_t i = shape_.size(); i-- > 0; ) {
+          if (strides_[i] != expected_stride) return false;
+          expected_stride *= shape_[i];
+        }
+        return true;
+      }
   };
 
   template<typename T>
@@ -385,15 +387,6 @@ namespace agon {
         });
       }
 
-      bool is_contiguous() const {
-        size_t expected_stride = 1;
-        for (size_t i = shape_.size(); i-- > 0; ) {
-          if (strides_[i] != expected_stride) return false;
-          expected_stride *= shape_[i];
-        }
-        return true;
-      }
-
       void zero_grad() {
         std::fill(grad_.begin(), grad_.end(), T(0));
       }
@@ -453,6 +446,15 @@ namespace agon {
         size_t num = std::accumulate(shape_.begin(), shape_.end(), size_t{1}, std::multiplies<size_t>{});
         data_.resize(num);
         grad_.resize(num);
+      }
+
+      bool is_contiguous() const {
+        size_t expected_stride = 1;
+        for (size_t i = shape_.size(); i-- > 0; ) {
+          if (strides_[i] != expected_stride) return false;
+          expected_stride *= shape_[i];
+        }
+        return true;
       }
 
       static constexpr const char* dtype_name() {
