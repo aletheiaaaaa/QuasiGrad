@@ -9,6 +9,7 @@
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
+#include <thread>
 
 namespace agon::optim {
   struct AdamParams {
@@ -31,8 +32,8 @@ namespace agon::optim {
   template<typename... Ts>
   class Adam : public Optimizer<Ts...> {
     public:
-      explicit Adam(ParameterPack<Ts...> parameters, AdamParams options = {})
-        : Optimizer<Ts...>(parameters), options_(options) {
+      explicit Adam(ParameterPack<Ts...> parameters, AdamParams options = {}, int num_proc = 1)
+        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
@@ -64,53 +65,67 @@ namespace agon::optim {
               auto& data_full = param.data();
 
               constexpr size_t vec_size = eve::wide<T>::size();
-              constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+              constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
-              size_t i = 0;
-              for (; i + vec_size * unroll_factor <= grad_full.size(); i += vec_size * unroll_factor) {
-                simd::unroll<unroll_factor>([&]<size_t index>() {
-                  constexpr size_t offset = index * vec_size;
+              std::vector<std::thread> threads;
+              size_t chunk_size = (param.numel() + num_proc_ - 1) / num_proc_;
 
-                  eve::wide<T> grad(&grad_full[i + offset]);
-                  eve::wide<T> mom(&mom_full[state_offset + i + offset]);
-                  eve::wide<T> vel(&vel_full[state_offset + i + offset]);
+              for (size_t t = 0; t < num_proc_; ++t) {
+                threads.emplace_back([&]() {
+                  size_t start = t * chunk_size;
+                  size_t end = std::min(start + chunk_size, param.numel());
 
-                  if (options_.maximize) grad = -grad;
+                  size_t i = start;
+                  for (; i + vec_size * unroll_factor <= end; i += vec_size * unroll_factor) {
+                    detail::unroll<unroll_factor>([&]<size_t index>() {
+                      constexpr size_t offset = index * vec_size;
 
-                  eve::wide<T> beta1(options_.beta1);
-                  mom = eve::fma(beta1, mom, grad);
-                  mom = eve::fnma(beta1, grad, mom);
+                      eve::wide<T> grad(&grad_full[i + offset]);
+                      eve::wide<T> mom(&mom_full[state_offset + i + offset]);
+                      eve::wide<T> vel(&vel_full[state_offset + i + offset]);
 
-                  eve::wide<T> beta2(options_.beta2);
-                  auto grad_squared = (options_.use_adazo) ? eve::mul(mom, mom) : eve::mul(grad, grad);
-                  vel = eve::fma(beta2, vel, grad_squared);
-                  vel = eve::fnma(beta2, grad_squared, vel);
+                      if (options_.maximize) grad = -grad;
 
-                  eve::store(mom, &mom_full[state_offset + i + offset]);
-                  eve::store(vel, &vel_full[state_offset + i + offset]);
+                      eve::wide<T> beta1(options_.beta1);
+                      mom = eve::fma(beta1, mom, grad);
+                      mom = eve::fnma(beta1, grad, mom);
 
-                  auto update = eve::div(mom, eve::add(eve::sqrt(vel), eve::wide<T>(options_.epsilon)));
-                  eve::wide<T> data(&data_full[i + offset]);
+                      eve::wide<T> beta2(options_.beta2);
+                      auto grad_squared = (options_.use_adazo) ? eve::mul(mom, mom) : eve::mul(grad, grad);
+                      vel = eve::fma(beta2, vel, grad_squared);
+                      vel = eve::fnma(beta2, grad_squared, vel);
 
-                  if (options_.lambda) update = eve::fnma(eve::wide<T>(options_.lambda), data, update);
-                  data = eve::fma(eve::wide<T>(options_.lr), update, data);
-                  eve::store(data, &data_full[i + offset]);
+                      eve::store(mom, &mom_full[state_offset + i + offset]);
+                      eve::store(vel, &vel_full[state_offset + i + offset]);
+
+                      auto update = eve::div(mom, eve::add(eve::sqrt(vel), eve::wide<T>(options_.epsilon)));
+                      eve::wide<T> data(&data_full[i + offset]);
+
+                      if (options_.lambda) update = eve::fnma(eve::wide<T>(options_.lambda), data, update);
+                      data = eve::fma(eve::wide<T>(options_.lr), update, data);
+                      eve::store(data, &data_full[i + offset]);
+                    });
+                  }
+
+                  for (; i < end; ++i) {
+                    T grad = options_.maximize ? -grad_full[i] : grad_full[i];
+
+                    T mom = options_.beta1 * mom_full[state_offset + i] + (1 - options_.beta1) * grad;
+                    T vel = options_.beta2 * vel_full[state_offset + i] + (1 - options_.beta2) * grad * grad;
+
+                    mom_full[state_offset + i] = mom;
+                    vel_full[state_offset + i] = vel;
+
+                    T update = mom / (std::sqrt(vel) + options_.epsilon);
+                    if (options_.lambda) update = -options_.lambda * data_full[i] + update;
+
+                    data_full[i] += options_.lr * update;
+                  }
                 });
               }
 
-              for (; i < grad_full.size(); ++i) {
-                T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-
-                T mom = options_.beta1 * mom_full[state_offset + i] + (1 - options_.beta1) * grad;
-                T vel = options_.beta2 * vel_full[state_offset + i] + (1 - options_.beta2) * grad * grad;
-
-                mom_full[state_offset + i] = mom;
-                vel_full[state_offset + i] = vel;
-
-                T update = mom / (std::sqrt(vel) + options_.epsilon);
-                if (options_.lambda) update = -options_.lambda * data_full[i] + update;
-
-                data_full[i] += options_.lr * update;
+              for (auto& thread : threads) {
+                thread.join();
               }
 
               state_offset += param.numel();
@@ -184,6 +199,7 @@ namespace agon::optim {
     private:
       AdamParams options_;
       AdamState<Ts...> state_;
+      int num_proc_;
 
       constexpr const char* optimizer_name() const { return "adam\0"; }
   };

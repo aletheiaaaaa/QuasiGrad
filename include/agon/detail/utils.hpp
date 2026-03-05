@@ -8,7 +8,7 @@
 
 #include "arch.hpp"
 
-namespace agon::simd {
+namespace agon::detail {
   template<typename F, typename T>
   concept IsUpcast = eve::wide<F>::size() < eve::wide<T>::size();
 
@@ -32,7 +32,7 @@ namespace agon::simd {
     } else if (std::is_same_v<T, int32_t>) {
       func.template operator()<int32_t>();
     } else {
-      throw std::runtime_error("Unsupported data type for SIMD operation");
+      throw std::runtime_error("Unsupported data type for detail operation");
     }
   }
 }

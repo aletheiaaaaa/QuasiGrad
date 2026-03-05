@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(agon
   VERSION 0.1.0
-  DESCRIPTION "C++ zeroth-order optimization library with SIMD acceleration and PyTorch-inspired API"
+  DESCRIPTION "C++ zeroth-order optimization library with detail acceleration and PyTorch-inspired API"
   LANGUAGES CXX
 )
 
@@ -54,7 +54,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   if(AGON_ENABLE_NATIVE)
     target_compile_options(agon INTERFACE -march=native)
   else()
-    # Manual SIMD feature flags
+    # Manual detail feature flags
     if(AGON_ENABLE_AVX512)
       include(CheckCXXCompilerFlag)
       check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)

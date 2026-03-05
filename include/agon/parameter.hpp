@@ -162,11 +162,11 @@ namespace agon {
       std::vector<T> result(numel());
 
       constexpr size_t vec_size = eve::wide<T>::size();
-      const size_t unroll_factor = simd::UNROLL_FACTOR;
+      const size_t unroll_factor = detail::UNROLL_FACTOR;
 
       int i = 0;
       for (; i + vec_size * unroll_factor <= result.size(); i += vec_size * unroll_factor) {
-        simd::unroll<unroll_factor>([&]<size_t index>() {
+        detail::unroll<unroll_factor>([&]<size_t index>() {
           constexpr size_t off = index * vec_size;
 
           eve::wide<int32_t, eve::fixed<vec_size>> idx_wide(&idx[i + off]);
@@ -187,11 +187,11 @@ namespace agon {
       auto& idx = ensure_indices();
 
       constexpr size_t vec_size = eve::wide<T>::size();
-      const size_t unroll_factor = simd::UNROLL_FACTOR;
+      const size_t unroll_factor = detail::UNROLL_FACTOR;
 
       int i = 0;
       for (; i + vec_size * unroll_factor <= new_data.size(); i += vec_size * unroll_factor) {
-        simd::unroll<unroll_factor>([&]<size_t index>() {
+        detail::unroll<unroll_factor>([&]<size_t index>() {
           constexpr size_t off = index * vec_size;
 
           eve::wide<T> vals(&new_data[i + off]);
@@ -217,10 +217,10 @@ namespace agon {
         int i = 0;
 
         constexpr size_t vec_size = eve::wide<T>::size();
-        constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+        constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
         for (; i + vec_size * unroll_factor <= leaf.size(); i += vec_size * unroll_factor) {
-          simd::unroll<unroll_factor>([&]<size_t index>() {
+          detail::unroll<unroll_factor>([&]<size_t index>() {
             constexpr size_t off = index * vec_size;
 
             eve::wide<T> vals(&leaf[i + off]);
@@ -361,11 +361,11 @@ namespace agon {
 
       void accumulate(const std::vector<T>& new_grad) {
         constexpr size_t vec_size = eve::wide<T>::size();
-        constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+        constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
         size_t i = 0;
         for (; i + vec_size * unroll_factor <= grad_.size(); i += vec_size * unroll_factor) {
-          simd::unroll<unroll_factor>([&]<size_t index>() {
+          detail::unroll<unroll_factor>([&]<size_t index>() {
             constexpr size_t offset = index * vec_size;
 
             eve::wide<T> grad_vec(&grad_[i + offset]);
@@ -472,11 +472,11 @@ namespace agon {
         T zero_point_cast = static_cast<T>(zero_point_);
 
         constexpr size_t vec_size = eve::wide<T>::size();
-        constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+        constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
         size_t i = 0;
         for (; i + vec_size * unroll_factor <= vals.size(); i += vec_size * unroll_factor) {
-          simd::unroll<unroll_factor>([&]<size_t index>() {
+          detail::unroll<unroll_factor>([&]<size_t index>() {
             constexpr size_t offset = index * vec_size;
 
             eve::wide<T> val_vec(&vals[i + offset]);
@@ -503,11 +503,11 @@ namespace agon {
         T zero_point_cast = static_cast<T>(zero_point_);
 
         constexpr size_t vec_size = eve::wide<T>::size();
-        constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+        constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
         size_t i = 0;
         for (; i + vec_size * unroll_factor <= vals.size(); i += vec_size * unroll_factor) {
-          simd::unroll<unroll_factor>([&]<size_t index>() {
+          detail::unroll<unroll_factor>([&]<size_t index>() {
             constexpr size_t offset = index * vec_size;
 
             eve::wide<T> val_vec(&vals[i + offset]);

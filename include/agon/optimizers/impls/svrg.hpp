@@ -9,6 +9,7 @@
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
+#include <thread>
 
 namespace agon::optim {
   struct SVRGParams {
@@ -30,8 +31,8 @@ namespace agon::optim {
   template<typename... Ts>
   class SVRG : public Optimizer<Ts...> {
     public:
-      explicit SVRG(ParameterPack<Ts...> parameters, SVRGParams options = {})
-        : Optimizer<Ts...>(parameters), options_(options) {
+      explicit SVRG(ParameterPack<Ts...> parameters, SVRGParams options = {}, int num_proc = 1)
+        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
@@ -74,37 +75,51 @@ namespace agon::optim {
               auto& data_full = param.data();
 
               constexpr size_t vec_size = eve::wide<T>::size();
-              constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+              constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
-              size_t i = 0;
-              for (; i + vec_size * unroll_factor <= grad_full.size(); i += vec_size * unroll_factor) {
-                simd::unroll<unroll_factor>([&]<size_t index>() {
-                  constexpr size_t off = index * vec_size;
+              std::vector<std::thread> threads;
+              size_t chunk_size = (param.numel() + num_proc_ - 1) / num_proc_;
 
-                  eve::wide<T> grad(&grad_full[i + off]);
-                  if (options_.maximize) grad = -grad;
+              for (size_t t = 0; t < num_proc_; ++t) {
+                threads.emplace_back([&]() {
+                  size_t start = t * chunk_size;
+                  size_t end = std::min(start + chunk_size, param.numel());
 
-                  auto update = [&](){
-                    if ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0) return grad;
+                  size_t i = start;
+                  for (; i + vec_size * unroll_factor <= end; i += vec_size * unroll_factor) {
+                    detail::unroll<unroll_factor>([&]<size_t index>() {
+                      constexpr size_t off = index * vec_size;
 
-                    eve::wide<T> ref_exact(&ref_exact_full[state_offset + i + off]);
-                    eve::wide<T> ref_est(&ref_est_full[state_offset + i + off]);
+                      eve::wide<T> grad(&grad_full[i + off]);
+                      if (options_.maximize) grad = -grad;
 
-                    return eve::add(eve::sub(grad, ref_est), ref_exact);
-                  };
+                      auto update = [&](){
+                        if ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0) return grad;
 
-                  eve::wide<T> data(&data_full[i + off]);
-                  data = eve::fma(eve::wide<T>(options_.lr), update, data);
-                  eve::store(data, &data_full[i + off]);
+                        eve::wide<T> ref_exact(&ref_exact_full[state_offset + i + off]);
+                        eve::wide<T> ref_est(&ref_est_full[state_offset + i + off]);
+
+                        return eve::add(eve::sub(grad, ref_est), ref_exact);
+                      }();
+
+                      eve::wide<T> data(&data_full[i + off]);
+                      data = eve::fma(eve::wide<T>(options_.lr), update, data);
+                      eve::store(data, &data_full[i + off]);
+                    });
+                  }
+
+                  for (; i < end; ++i) {
+                    T grad = options_.maximize ? -grad_full[i] : grad_full[i];
+                    T update = ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0)
+                      ? grad : grad - ref_est_full[state_offset + i] + ref_exact_full[state_offset + i];
+
+                    data_full[i] += options_.lr * update;
+                  }
                 });
               }
 
-              for (; i < grad_full.size(); ++i) {
-                T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-                T update = ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0)
-                  ? grad : grad - ref_est_full[state_offset + i] + ref_exact_full[state_offset + i];
-
-                data_full[i] += options_.lr * update;
+              for (auto& thread : threads) {
+                thread.join();
               }
 
               state_offset += param.numel();
@@ -181,6 +196,7 @@ namespace agon::optim {
     private:
       SVRGParams options_;
       SVRGState<std::tuple<Ts...>> state_;
+      int num_proc_;
 
       constexpr const char* optimizer_name() const { return "svrg\0"; }
   };

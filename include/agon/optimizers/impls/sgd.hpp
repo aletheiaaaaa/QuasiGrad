@@ -9,6 +9,7 @@
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
+#include <thread>
 
 namespace agon::optim {
   struct SGDParams {
@@ -27,8 +28,8 @@ namespace agon::optim {
   template<typename... Ts>
   class SGD : public Optimizer<Ts...> {
     public:
-      explicit SGD(ParameterPack<Ts...> parameters, SGDParams options = {})
-        : Optimizer<Ts...>(parameters), options_(options) {
+      explicit SGD(ParameterPack<Ts...> parameters, SGDParams options = {}, int num_proc = 1)
+        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
@@ -57,41 +58,55 @@ namespace agon::optim {
               auto& data_full = param.data();
 
               constexpr size_t vec_size = eve::wide<T>::size();
-              constexpr size_t unroll_factor = simd::UNROLL_FACTOR;
+              constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
 
-              size_t i = 0;
-              for (; i + vec_size * unroll_factor <= grad_full.size(); i += vec_size * unroll_factor) {
-                simd::unroll<unroll_factor>([&]<size_t index>() {
-                  constexpr size_t offset = index * vec_size;
+              std::vector<std::thread> threads;
+              size_t chunk_size = (param.numel() + num_proc_ - 1) / num_proc_;
 
-                  eve::wide<T> grad(&grad_full[i + offset]);
-                  eve::wide<T> mom(&mom_full[state_offset + i + offset]);
+              for (size_t t = 0; t < num_proc_; ++t) {
+                threads.emplace_back([&]() {
+                  size_t start = t * chunk_size;
+                  size_t end = std::min(start + chunk_size, param.numel());
 
-                  if (options_.maximize) grad = -grad;
+                  size_t i = start;
+                  for (; i + vec_size * unroll_factor <= end; i += vec_size * unroll_factor) {
+                    detail::unroll<unroll_factor>([&]<size_t index>() {
+                      constexpr size_t offset = index * vec_size;
 
-                  auto update = [&](){
-                    if (!options_.momentum) return grad;
+                      eve::wide<T> grad(&grad_full[i + offset]);
+                      eve::wide<T> mom(&mom_full[state_offset + i + offset]);
 
-                    mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
-                    eve::store(mom, &mom_full[state_offset + i + offset]);
+                      if (options_.maximize) grad = -grad;
 
-                    if (options_.nesterov) return eve::fma(eve::wide<T>(options_.momentum), mom, grad);
-                    else return mom;
-                  }();
+                      auto update = [&](){
+                        if (!options_.momentum) return grad;
 
-                  eve::wide<T> data(&data_full[i + offset]);
-                  data = eve::fma(eve::wide<T>(options_.lr), update, data);
-                  eve::store(data, &data_full[i + offset]);
+                        mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
+                        eve::store(mom, &mom_full[state_offset + i + offset]);
+
+                        if (options_.nesterov) return eve::fma(eve::wide<T>(options_.momentum), mom, grad);
+                        else return mom;
+                      }();
+
+                      eve::wide<T> data(&data_full[i + offset]);
+                      data = eve::fma(eve::wide<T>(options_.lr), update, data);
+                      eve::store(data, &data_full[i + offset]);
+                    });
+                  }
+
+                  for (; i < end; ++i) {
+                    T grad = options_.maximize ? -grad_full[i] : grad_full[i];
+                    T mom = options_.momentum * mom_full[state_offset + i] + grad;
+                    mom_full[state_offset + i] = mom;
+
+                    T update = options_.nesterov ? (options_.momentum * mom + grad) : mom;
+                    data_full[i] += options_.lr * update;
+                  }
                 });
               }
 
-              for (; i < grad_full.size(); ++i) {
-                T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-                T mom = options_.momentum * mom_full[state_offset + i] + grad;
-                mom_full[state_offset + i] = mom;
-
-                T update = options_.nesterov ? (options_.momentum * mom + grad) : mom;
-                data_full[i] += options_.lr * update;
+              for (auto& thread : threads) {
+                thread.join();
               }
 
               state_offset += param.numel();
@@ -161,6 +176,7 @@ namespace agon::optim {
     private:
       SGDParams options_;
       SGDState<Ts...> state_;
+      int num_proc_;
 
       constexpr const char* optimizer_name() const { return "sgd\0"; }
   };
