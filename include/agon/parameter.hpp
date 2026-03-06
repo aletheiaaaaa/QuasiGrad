@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdint>
 #include <cstddef>
+#include <concepts>
 #include <string>
 #include <span>
 #include <limits>

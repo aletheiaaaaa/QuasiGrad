@@ -2,7 +2,6 @@
 
 #include "../parameter.hpp"
 
-#include <algorithm>
 #include <cstdint>
 
 namespace agon::optim {

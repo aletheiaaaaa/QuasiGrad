@@ -3,8 +3,6 @@
 #include "../optimizer.hpp"
 #include "../../detail/utils.hpp"
 
-#include <eve/module/core.hpp>
-
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
