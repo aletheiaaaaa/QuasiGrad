@@ -9,17 +9,13 @@
 #include <thread>
 
 namespace agon::optim {
-  struct SGDParams {
+  struct SGDOptions {
     float lr = 0.01f;
     float momentum = 0.0f;
+    float lambda = 0.0f;
 
     bool nesterov = false;
     bool maximize = false;
-
-    template<class Archive>
-    void serialize(Archive& ar) {
-      ar(lr, momentum, nesterov, maximize);
-    }
   };
 
   template<typename DedupedTuple>
@@ -27,11 +23,11 @@ namespace agon::optim {
     ExtractedVector<DedupedTuple> momentum{};
   };
 
-  template<typename... Ts>
-  class SGD : public Optimizer<Ts...> {
+  template<typename DedupedTuple>
+  class SGD : public Optimizer<DedupedTuple> {
     public:
-      explicit SGD(ParameterPack<Ts...> parameters, SGDParams options = {}, int num_proc = 1)
-        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
+      explicit SGD(ParameterPack<DedupedTuple> parameters, SGDOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
@@ -77,20 +73,22 @@ namespace agon::optim {
 
                       eve::wide<T> grad(&grad_full[i + offset]);
                       eve::wide<T> mom(&mom_full[state_offset + i + offset]);
+                      eve::wide<T> data(&data_full[i + offset]);
 
                       if (options_.maximize) grad = -grad;
 
                       auto update = [&](){
-                        if (!options_.momentum) return grad;
+                        if (options_.momentum) {
+                          mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
+                          eve::store(mom, &mom_full[state_offset + i + offset]);
 
-                        mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
-                        eve::store(mom, &mom_full[state_offset + i + offset]);
+                          if (options_.nesterov) grad = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
+                        }
+                        if (options_.lambda) grad = eve::fma(eve::wide<T>(options_.lambda), data, grad);
 
-                        if (options_.nesterov) return eve::fma(eve::wide<T>(options_.momentum), mom, grad);
-                        else return mom;
+                        return grad;
                       }();
 
-                      eve::wide<T> data(&data_full[i + offset]);
                       data = eve::fma(eve::wide<T>(options_.lr), update, data);
                       eve::store(data, &data_full[i + offset]);
                     });
@@ -102,6 +100,8 @@ namespace agon::optim {
                     mom_full[state_offset + i] = mom;
 
                     T update = options_.nesterov ? (options_.momentum * mom + grad) : mom;
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
+
                     data_full[i] += options_.lr * update;
                   }
                 });
@@ -130,11 +130,7 @@ namespace agon::optim {
         cereal::BinaryInputArchive ar(in);
         std::string name;
         ar(name);
-        if (name != optimizer_name()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_name()));
-
-        std::string dtype_str;
-        ar(dtype_str);
-        if (dtype_str != dtypes()) throw std::runtime_error("Optimizer data type mismatch: expected " + std::string(dtypes()));
+        if (name != optimizer_type()) throw std::runtime_error("Optimizer type mismatch: expected " + optimizer_type());
 
         ar(options_, state_.step, state_.momentum);
 
@@ -155,10 +151,9 @@ namespace agon::optim {
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
         cereal::BinaryOutputArchive ar(out);
-        std::string name(optimizer_name());
-        std::string dtype_str(dtypes());
+        std::string name(optimizer_type());
 
-        ar(name, dtype_str, options_, state_.step, state_.momentum);
+        ar(name, options_, state_.step, state_.momentum);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
@@ -170,11 +165,17 @@ namespace agon::optim {
       }
 
     private:
-      SGDParams options_;
-      SGDState<Ts...> state_;
+      SGDOptions options_;
+      SGDState<DedupedTuple> state_;
       int num_proc_;
 
-      static constexpr const char* optimizer_name() { return "sgd\0"; }
-      static constexpr const char* dtypes() { return (std::string_view(typeid(Ts).name()) + ...); }
+      std::string optimizer_type() const {
+          return "SGD<" + []<typename... Us>(std::tuple<Us...>*) {
+              std::string result;
+              bool last = true;
+              ((result += (last ? "" : ", ") + PrintType<std::remove_cvref_t<Us>>::name(), last = false), ...);
+              return result;
+          }(static_cast<DedupedTuple*>(nullptr)) + ">";
+      }
   };
 }

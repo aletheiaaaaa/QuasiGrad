@@ -341,6 +341,9 @@ namespace agon {
       const std::vector<size_t>& size() const { return shape_; }
       size_t size(size_t i) const { return shape_[i]; }
 
+      const std::vector<size_t>& strides() const { return strides_; }
+      size_t strides(size_t i) const {return strides_[i]; };
+
       size_t rank() const { return shape_.size(); }
       size_t numel() const { return data_.size(); }
 
@@ -606,10 +609,10 @@ namespace agon {
       float scale_ = 1.0f;
       float zero_point_ = 0.0f;
 
-      static constexpr const char* qtype_name() {
-        if constexpr (std::is_same_v<Q, int8_t>) return "int8\0";
-        else if constexpr (std::is_same_v<Q, int16_t>) return "int16\0";
-        else return "unknown\0";
+      std::string qtype_name() {
+        if constexpr (std::is_same_v<Q, int8_t>) return "int8";
+        else if constexpr (std::is_same_v<Q, int16_t>) return "int16";
+        else return "unknown";
       }
   };
 
@@ -670,6 +673,19 @@ namespace agon {
   struct ExtractType<Quantized<Q, T>> { using Type = TaggedVector<T, std::tuple<Q, T>>; };
   template<typename T>
   using ExtractType_t = typename ExtractType<T>::Type;
+
+  template<typename T>
+  struct PrintType {
+    static std::string name() { return "unknown"; }
+  };
+  template<typename T>
+  struct PrintType<Parameter<T>> { 
+    static std::string name() { return "Parameter<" + detail::TypeName<T>::name() + ">"; }
+  };
+  template<typename Q, typename T>
+  struct PrintType<Quantized<Q, T>> {
+    static std::string name() { return "Quantized<" + detail::TypeName<Q>::name() + ", " + detail::TypeName<T>::name() + ">"; }
+  };
 
   template<typename DedupedTuple>
   using ExtractedVector = detail::TransformTuple_t<ExtractType_t, DedupedTuple>;

@@ -9,10 +9,10 @@ namespace agon::optim {
     int64_t step = 0;
   };
 
-  template<typename... Ts>
+  template<typename T>
   class Optimizer {
     public:
-      explicit Optimizer(ParameterPack<Ts...> parameters) : parameters_(parameters) {}
+      explicit Optimizer(ParameterPack<T> parameters) : parameters_(parameters) {}
 
       void zero_grad() {
         std::apply([](auto&... param_vecs) {
@@ -21,12 +21,6 @@ namespace agon::optim {
             param.zero_grad();
           }), ...);
         }, parameters_.data);
-      }
-
-      template<typename T>
-        requires std::derived_from<T, Parameter<typename T::DataType>>
-      void add_parameter(T& param) {
-        parameters_.add_parameter(param);
       }
 
       virtual bool recompute() const { return false; }
@@ -40,6 +34,6 @@ namespace agon::optim {
       ~Optimizer() = default;
     protected:
       OptimizerState state_;
-      ParameterPack<Ts...> parameters_;
+      ParameterPack<T> parameters_;
   };
 }

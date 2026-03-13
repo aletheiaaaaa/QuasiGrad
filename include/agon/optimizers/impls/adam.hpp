@@ -9,7 +9,7 @@
 #include <thread>
 
 namespace agon::optim {
-  struct AdamParams {
+  struct AdamOptions {
     float lr = 1e-4f;
     float beta1 = 0.9f;
     float beta2 = 0.4f;
@@ -18,11 +18,6 @@ namespace agon::optim {
 
     bool maximize = false;
     bool use_adazo = false;
-
-    template<class Archive>
-    void serialize(Archive& ar) {
-      ar(lr, beta1, beta2, epsilon, lambda, maximize, use_adazo);
-    }
   };
 
   template<typename DedupedTuple>
@@ -31,11 +26,11 @@ namespace agon::optim {
     ExtractedVector<DedupedTuple> velocity{};
   };
 
-  template<typename... Ts>
-  class Adam : public Optimizer<Ts...> {
+  template<typename DedupedTuple>
+  class Adam : public Optimizer<DedupedTuple> {
     public:
-      explicit Adam(ParameterPack<Ts...> parameters, AdamParams options = {}, int num_proc = 1)
-        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
+      explicit Adam(ParameterPack<DedupedTuple> parameters, AdamOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
@@ -149,11 +144,7 @@ namespace agon::optim {
         cereal::BinaryInputArchive ar(in);
         std::string name;
         ar(name);
-        if (name != optimizer_name()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_name()));
-
-        std::string dtype_str;
-        ar(dtype_str);
-        if (dtype_str != dtypes()) throw std::runtime_error("Optimizer data type mismatch: expected " + std::string(dtypes()));
+        if (name != optimizer_type()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_type()));
 
         ar(options_, state_.step, state_.momentum, state_.velocity);
 
@@ -174,10 +165,9 @@ namespace agon::optim {
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
         cereal::BinaryOutputArchive ar(out);
-        std::string name(optimizer_name());
-        std::string dtype_str(dtypes());
+        std::string name(optimizer_type());
 
-        ar(name, dtype_str, options_, state_.step, state_.momentum, state_.velocity);
+        ar(name, options_, state_.step, state_.momentum, state_.velocity);
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             for (auto& param_ref : param_vec) {
@@ -188,11 +178,17 @@ namespace agon::optim {
       }
 
     private:
-      AdamParams options_;
-      AdamState<Ts...> state_;
+      AdamOptions options_;
+      AdamState<DedupedTuple> state_;
       int num_proc_;
 
-      static constexpr const char* optimizer_name() { return "adam\0"; }
-      static constexpr const char* dtypes() { return (std::string_view(typeid(Ts).name()) + ...); }
+      std::string optimizer_type() const {
+        return "Adam<" + []<typename... Us>(std::tuple<Us...>*) {
+          std::string result;
+          bool last = true;
+          ((result += (last ? "" : ", ") + PrintType<std::remove_cvref_t<Us>>::name(), last = false), ...);
+          return result;
+        }(static_cast<DedupedTuple*>(nullptr)) + ">";
+      }
   };
 }

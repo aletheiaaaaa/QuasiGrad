@@ -9,16 +9,12 @@
 #include <thread>
 
 namespace agon::optim {
-  struct SarahParams {
+  struct SarahOptions {
     float lr = 0.01f;
+    float lambda = 0.0f;
     int recompute_every = 64;
 
     bool maximize = false;
-
-    template<class Archive>
-    void serialize(Archive& ar) {
-      ar(lr, recompute_every, maximize);
-    }
   };
 
   template<typename DedupedTuple>
@@ -27,11 +23,11 @@ namespace agon::optim {
     ExtractedVector<DedupedTuple> prev_update{};
   };
 
-  template<typename... Ts>
-  class Sarah : public Optimizer<Ts...> {
+  template<typename DedupedTuple>
+  class Sarah : public Optimizer<DedupedTuple> {
     public:
-      explicit Sarah(ParameterPack<Ts...> parameters, SarahParams options = {}, int num_proc = 1)
-        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
+      explicit Sarah(ParameterPack<DedupedTuple> parameters, SarahOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
           if ((options_.recompute_every != -1) && options_.recompute_every == 0) throw std::invalid_argument("Recompute every must be greater than 0 when recompute is enabled");
 
           std::apply([&](auto&... param_vecs) {
@@ -83,6 +79,7 @@ namespace agon::optim {
                       constexpr size_t offset = index * vec_size;
 
                       eve::wide<T> grad(&grad_full[i + offset]);
+                      eve::wide<T> data(&data_full[i + offset]);
                       if (options_.maximize) grad = -grad;
 
                       auto update = [&](){
@@ -91,10 +88,12 @@ namespace agon::optim {
                         eve::wide<T> prev_grad(&prev_grad_full[state_offset + i + offset]);
                         eve::wide<T> prev_update(&prev_update_full[state_offset + i + offset]);
 
-                        return eve::add(eve::sub(grad, prev_grad), prev_update);
+                        grad = eve::add(eve::sub(grad, prev_grad), prev_update);
+                        if (options_.lambda) grad = eve::fnma(eve::wide<T>(options_.lambda), data, grad);
+
+                        return grad;
                       }();
 
-                      eve::wide<T> data(&data_full[i + offset]);
                       data = eve::fma(eve::wide<T>(options_.lr), update, data);
 
                       eve::store(data, &data_full[i + offset]);
@@ -107,8 +106,11 @@ namespace agon::optim {
                     T update = ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0)
                       ? grad : grad - prev_grad_full[state_offset + i] + prev_update_full[state_offset + i];
 
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
+
                     data_full[i] += options_.lr * update;
                     prev_grad_full[state_offset + i] = grad;
+                    prev_update_full[state_offset + i] = update;
                   }
                 });
               }
@@ -136,11 +138,7 @@ namespace agon::optim {
         cereal::BinaryInputArchive ar(in);
         std::string name;
         ar(name);
-        if (name != optimizer_name()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_name()));
-
-        std::string dtype_str;
-        ar(dtype_str);
-        if (dtype_str != dtypes()) throw std::runtime_error("Optimizer data type mismatch: expected " + std::string(dtypes()));
+        if (name != optimizer_type()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_type()));
 
         ar(options_, state_.step, state_.prev_grad, state_.prev_update);
 
@@ -161,9 +159,8 @@ namespace agon::optim {
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
         cereal::BinaryOutputArchive ar(out);
-        std::string name(optimizer_name());
-        std::string dtype_str(dtypes());
-        ar(name, dtype_str, options_, state_.step, state_.prev_grad, state_.prev_update);
+        std::string name(optimizer_type());
+        ar(name, options_, state_.step, state_.prev_grad, state_.prev_update);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
@@ -175,11 +172,17 @@ namespace agon::optim {
       }
 
     private:
-      SarahParams options_;
-      SarahState<Ts...> state_;
+      SarahOptions options_;
+      SarahState<DedupedTuple> state_;
       int num_proc_;
 
-      static constexpr const char* optimizer_name() { return "sarah\0"; }
-      static constexpr const char* dtypes() { return (std::string_view(typeid(Ts).name()) + ...); }
+      std::string optimizer_type() const {
+        return "SARAH<" + []<typename... Us>(std::tuple<Us...>*) {
+          std::string result;
+          bool last = true;
+          ((result += (last ? "" : ", ") + PrintType<std::remove_cvref_t<Us>>::name(), last = false), ...);
+          return result;
+        }(static_cast<DedupedTuple*>(nullptr)) + ">";
+      }
   };
 }

@@ -9,16 +9,12 @@
 #include <thread>
 
 namespace agon::optim {
-  struct SVRGParams {
+  struct SVRGOptions {
     float lr = 0.5f;
+    float lambda = 0.0f;
     int recompute_every = 64;
 
     bool maximize = false;
-
-    template<class Archive>
-    void serialize(Archive& ar) {
-      ar(lr, recompute_every, maximize);
-    }
   };
 
   template<typename DedupedTuple>
@@ -30,11 +26,11 @@ namespace agon::optim {
     bool use_ref = true;
   };
 
-  template<typename... Ts>
-  class SVRG : public Optimizer<Ts...> {
+  template<typename DedupedTuple>
+  class SVRG : public Optimizer<DedupedTuple> {
     public:
-      explicit SVRG(ParameterPack<Ts...> parameters, SVRGParams options = {}, int num_proc = 1)
-        : Optimizer<Ts...>(parameters), options_(options), num_proc_(num_proc) {
+      explicit SVRG(ParameterPack<DedupedTuple> parameters, SVRGOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
@@ -55,12 +51,12 @@ namespace agon::optim {
       bool recompute() const override { return (options_.recompute_every != -1) && state_.step % options_.recompute_every == 0; }
       bool use_ref() const override { return state_.use_ref; }
 
-      template<typename DedupedTuple>
-      ExtractedVector<DedupedTuple>& ref_exact() { return std::get<ExtractType_t<DedupedTuple>>(state_.ref_exact); }
-      template<typename DedupedTuple>
-      ExtractedVector<DedupedTuple>& ref_est() { return std::get<ExtractType_t<DedupedTuple>>(state_.ref_est); }
-      template<typename DedupedTuple>
-      ExtractedVector<DedupedTuple>& ref_data() { return std::get<ExtractType_t<DedupedTuple>>(state_.ref_data); }
+      template<typename T>
+      ExtractedVector<T>& ref_exact() { return std::get<ExtractType_t<T>>(state_.ref_exact); }
+      template<typename T>
+      ExtractedVector<T>& ref_est() { return std::get<ExtractType_t<T>>(state_.ref_est); }
+      template<typename T>
+      ExtractedVector<T>& ref_data() { return std::get<ExtractType_t<T>>(state_.ref_data); }
 
       void step() override {
         std::apply([&](auto&... param_vecs) {
@@ -93,6 +89,7 @@ namespace agon::optim {
                       constexpr size_t off = index * vec_size;
 
                       eve::wide<T> grad(&grad_full[i + off]);
+                      eve::wide<T> data(&data_full[i + off]);
                       if (options_.maximize) grad = -grad;
 
                       auto update = [&](){
@@ -101,10 +98,12 @@ namespace agon::optim {
                         eve::wide<T> ref_exact(&ref_exact_full[state_offset + i + off]);
                         eve::wide<T> ref_est(&ref_est_full[state_offset + i + off]);
 
-                        return eve::add(eve::sub(grad, ref_est), ref_exact);
+                        grad = eve::add(eve::sub(grad, ref_est), ref_exact);
+                        if (options_.lambda) grad = eve::fnma(eve::wide<T>(options_.lambda), data, grad);
+
+                        return grad;
                       }();
 
-                      eve::wide<T> data(&data_full[i + off]);
                       data = eve::fma(eve::wide<T>(options_.lr), update, data);
                       eve::store(data, &data_full[i + off]);
                     });
@@ -115,6 +114,7 @@ namespace agon::optim {
                     T update = ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0)
                       ? grad : grad - ref_est_full[state_offset + i] + ref_exact_full[state_offset + i];
 
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
                     data_full[i] += options_.lr * update;
                   }
                 });
@@ -144,11 +144,7 @@ namespace agon::optim {
         cereal::BinaryInputArchive ar(in);
         std::string name;
         ar(name);
-        if (name != optimizer_name()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_name()));
-
-        std::string dtype_str;
-        ar(dtype_str);
-        if (dtype_str != dtypes()) throw std::runtime_error("Optimizer data type mismatch: expected " + std::string(dtypes()));
+        if (name != optimizer_type()) throw std::runtime_error("Optimizer type mismatch: expected " + std::string(optimizer_type()));
 
         ar(options_, state_.step, state_.ref_exact, state_.ref_est);
 
@@ -169,9 +165,8 @@ namespace agon::optim {
         if (!out) throw std::runtime_error("Failed to open file: " + path_str);
 
         cereal::BinaryOutputArchive ar(out);
-        std::string name(optimizer_name());
-        std::string dtype_str(dtypes());
-        ar(name, dtype_str, options_, state_.step, state_.ref_exact, state_.ref_est);
+        std::string name(optimizer_type());
+        ar(name, options_, state_.step, state_.ref_exact, state_.ref_est);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
@@ -183,11 +178,17 @@ namespace agon::optim {
       }
 
     private:
-      SVRGParams options_;
-      SVRGState<std::tuple<Ts...>> state_;
+      SVRGOptions options_;
+      SVRGState<DedupedTuple> state_;
       int num_proc_;
 
-      static constexpr const char* optimizer_name() { return "svrg\0"; }
-      static constexpr const char* dtypes() { return (std::string_view(typeid(Ts).name()) + ...); }
-  };
+      std::string optimizer_type() const {
+        return "SVRG<" + []<typename... Us>(std::tuple<Us...>*) {
+          std::string result;
+          bool last = true;
+          ((result += (last ? "" : ", ") + PrintType<std::remove_cvref_t<Us>>::name(), last = false), ...);
+          return result;
+        }(static_cast<DedupedTuple*>(nullptr)) + ">";
+      }
+    };
 }
