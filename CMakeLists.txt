@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(quasigrad
+project(mirage
   VERSION 0.1.0
   DESCRIPTION "C++ zeroth-order optimization library with detail acceleration and PyTorch-inspired API"
   LANGUAGES CXX
 )
 
 # Options
-option(QGRAD_ENABLE_NATIVE "Enable native architecture optimizations (-march=native)" ON)
-option(QGRAD_ENABLE_AVX512 "Enable AVX512 instructions (if available)" ON)
-option(QGRAD_ENABLE_AVX2 "Enable AVX2 instructions (if available)" ON)
-option(QGRAD_ENABLE_SSE4 "Enable SSE4.1 instructions (if available)" ON)
+option(MIRAGE_ENABLE_NATIVE "Enable native architecture optimizations (-march=native)" ON)
+option(MIRAGE_ENABLE_AVX512 "Enable AVX512 instructions (if available)" ON)
+option(MIRAGE_ENABLE_AVX2 "Enable AVX2 instructions (if available)" ON)
+option(MIRAGE_ENABLE_SSE4 "Enable SSE4.1 instructions (if available)" ON)
 
 include(FetchContent)
 
@@ -26,7 +26,7 @@ if(NOT eve_FOUND)
   set(EVE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
   set(EVE_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(eve)
-  set(QGRAD_EVE_FETCHED TRUE)
+  set(MIRAGE_EVE_FETCHED TRUE)
 endif()
 
 find_package(cereal QUIET)
@@ -39,133 +39,133 @@ if(NOT cereal_FOUND)
   )
   set(JUST_INSTALL_CEREAL ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(cereal)
-  set(QGRAD_CEREAL_FETCHED TRUE)
+  set(MIRAGE_CEREAL_FETCHED TRUE)
 endif()
 
 # Header-only library target
-add_library(quasigrad INTERFACE)
-add_library(qgrad::quasigrad ALIAS quasigrad)
+add_library(mirage INTERFACE)
+add_library(mirage::mirage ALIAS mirage)
 
 # Require C++23
-target_compile_features(quasigrad INTERFACE cxx_std_23)
+target_compile_features(mirage INTERFACE cxx_std_23)
 
 # Include directories
-target_include_directories(quasigrad
+target_include_directories(mirage
   INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-if(QGRAD_EVE_FETCHED)
-  target_include_directories(quasigrad INTERFACE $<BUILD_INTERFACE:${eve_SOURCE_DIR}/include>)
+if(MIRAGE_EVE_FETCHED)
+  target_include_directories(mirage INTERFACE $<BUILD_INTERFACE:${eve_SOURCE_DIR}/include>)
 else()
-  target_link_libraries(quasigrad INTERFACE eve::eve)
+  target_link_libraries(mirage INTERFACE eve::eve)
 endif()
 
-if(QGRAD_CEREAL_FETCHED)
-  target_include_directories(quasigrad INTERFACE $<BUILD_INTERFACE:${cereal_SOURCE_DIR}/include>)
+if(MIRAGE_CEREAL_FETCHED)
+  target_include_directories(mirage INTERFACE $<BUILD_INTERFACE:${cereal_SOURCE_DIR}/include>)
 else()
-  target_link_libraries(quasigrad INTERFACE cereal::cereal)
+  target_link_libraries(mirage INTERFACE cereal::cereal)
 endif()
 
 # Compiler-specific settings
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # Architecture optimizations
-  if(QGRAD_ENABLE_NATIVE)
-    target_compile_options(quasigrad INTERFACE -march=native)
+  if(MIRAGE_ENABLE_NATIVE)
+    target_compile_options(mirage INTERFACE -march=native)
   else()
     # Manual detail feature flags
-    if(QGRAD_ENABLE_AVX512)
+    if(MIRAGE_ENABLE_AVX512)
       include(CheckCXXCompilerFlag)
       check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
       if(COMPILER_SUPPORTS_AVX512F)
-        target_compile_options(quasigrad INTERFACE -mavx512f)
+        target_compile_options(mirage INTERFACE -mavx512f)
       endif()
     endif()
 
-    if(QGRAD_ENABLE_AVX2)
+    if(MIRAGE_ENABLE_AVX2)
       include(CheckCXXCompilerFlag)
       check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
       if(COMPILER_SUPPORTS_AVX2)
-        target_compile_options(quasigrad INTERFACE -mavx2 -mfma)
+        target_compile_options(mirage INTERFACE -mavx2 -mfma)
       endif()
     endif()
 
-    if(QGRAD_ENABLE_SSE4)
+    if(MIRAGE_ENABLE_SSE4)
       include(CheckCXXCompilerFlag)
       check_cxx_compiler_flag("-msse4.1" COMPILER_SUPPORTS_SSE41)
       if(COMPILER_SUPPORTS_SSE41)
-        target_compile_options(quasigrad INTERFACE -msse4.1)
+        target_compile_options(mirage INTERFACE -msse4.1)
       endif()
     endif()
   endif()
 
 elseif(MSVC)
-  if(QGRAD_ENABLE_AVX512)
-    target_compile_options(quasigrad INTERFACE /arch:AVX512)
-  elseif(QGRAD_ENABLE_AVX2)
-    target_compile_options(quasigrad INTERFACE /arch:AVX2)
-  elseif(QGRAD_ENABLE_SSE4)
-    target_compile_options(quasigrad INTERFACE /arch:SSE2)
+  if(MIRAGE_ENABLE_AVX512)
+    target_compile_options(mirage INTERFACE /arch:AVX512)
+  elseif(MIRAGE_ENABLE_AVX2)
+    target_compile_options(mirage INTERFACE /arch:AVX2)
+  elseif(MIRAGE_ENABLE_SSE4)
+    target_compile_options(mirage INTERFACE /arch:SSE2)
   endif()
 endif()
 
 # Installation
 include(GNUInstallDirs)
 
-install(TARGETS quasigrad
-  EXPORT quasigradTargets
+install(TARGETS mirage
+  EXPORT mirageTargets
 )
 
-install(DIRECTORY include/quasigrad
+install(DIRECTORY include/mirage
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp"
 )
 
-if(QGRAD_EVE_FETCHED)
+if(MIRAGE_EVE_FETCHED)
   install(DIRECTORY ${eve_SOURCE_DIR}/include/eve
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 endif()
 
-if(QGRAD_CEREAL_FETCHED)
+if(MIRAGE_CEREAL_FETCHED)
   install(DIRECTORY ${cereal_SOURCE_DIR}/include/cereal
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 endif()
 
 # Export targets
-install(EXPORT quasigradTargets
-  FILE quasigradTargets.cmake
-  NAMESPACE qgrad::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/quasigrad
+install(EXPORT mirageTargets
+  FILE mirageTargets.cmake
+  NAMESPACE mirage::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mirage
 )
 
 # Package configuration
 include(CMakePackageConfigHelpers)
 
 configure_package_config_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/quasigradConfig.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/quasigradConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/quasigrad
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/mirageConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/mirageConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mirage
 )
 
 write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/quasigradConfigVersion.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/mirageConfigVersion.cmake
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
 )
 
 install(FILES
-  ${CMAKE_CURRENT_BINARY_DIR}/quasigradConfig.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/quasigradConfigVersion.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/quasigrad
+  ${CMAKE_CURRENT_BINARY_DIR}/mirageConfig.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/mirageConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mirage
 )
 
 # Export from build tree
-export(EXPORT quasigradTargets
-  FILE ${CMAKE_CURRENT_BINARY_DIR}/quasigradTargets.cmake
-  NAMESPACE qgrad::
+export(EXPORT mirageTargets
+  FILE ${CMAKE_CURRENT_BINARY_DIR}/mirageTargets.cmake
+  NAMESPACE mirage::
 )
 
 # Uninstall target

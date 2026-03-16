@@ -8,44 +8,51 @@
 #include <stdexcept>
 #include <thread>
 
-namespace qgrad::optim {
-  struct SGDOptions {
+namespace mirage::optim {
+  struct SarahOptions {
     float lr = 0.01f;
-    float momentum = 0.0f;
     float lambda = 0.0f;
+    int recompute_every = 64;
 
-    bool nesterov = false;
     bool maximize = false;
   };
 
   template<typename DedupedTuple>
-  struct SGDState : public OptimizerState {
-    ExtractedVector<DedupedTuple> momentum{};
+  struct SarahState : public OptimizerState {
+    ExtractedVector<DedupedTuple> prev_grad{};
+    ExtractedVector<DedupedTuple> prev_update{};
   };
 
   template<typename DedupedTuple>
-  class SGD : public Optimizer<DedupedTuple> {
+  class Sarah : public Optimizer<DedupedTuple> {
     public:
-      explicit SGD(ParameterPack<DedupedTuple> parameters, SGDOptions options = {}, int num_proc = 1)
+      explicit Sarah(ParameterPack<DedupedTuple> parameters, SarahOptions options = {}, int num_proc = 1)
         : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
+          if ((options_.recompute_every != -1) && options_.recompute_every == 0) throw std::invalid_argument("Recompute every must be greater than 0 when recompute is enabled");
+
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-              auto& mom = std::get<ExtractType_t<ParamType>>(this->state_.momentum);
+              auto& prev_grad = std::get<ExtractType_t<ParamType>>(this->state_.prev_grad);
+              auto& prev_update = std::get<ExtractType_t<ParamType>>(this->state_.prev_update);
               for (auto& param_ref : param_vec) {
                 auto& param = param_ref.get();
                 using T = typename ParamType::DataType;
-                mom.insert(mom.end(), param.numel(), T(0));
+                prev_grad.insert(prev_grad.end(), param.numel(), T(0));
+                prev_update.insert(prev_update.end(), param.numel(), T(0));
               }
             }(param_vecs), ...);
           }, this->parameters_.data);
         }
 
+      bool recompute() const override { return (options_.recompute_every != -1) && state_.step % options_.recompute_every == 0; }
+
       void step() override {
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& mom_full = std::get<ExtractType_t<ParamType>>(state_.momentum);
+            auto& prev_grad_full = std::get<ExtractType_t<ParamType>>(state_.prev_grad);
+            auto& prev_update_full = std::get<ExtractType_t<ParamType>>(state_.prev_update);
 
             size_t state_offset = 0;
             for (auto param_ref : param_vec) {
@@ -72,37 +79,38 @@ namespace qgrad::optim {
                       constexpr size_t offset = index * vec_size;
 
                       eve::wide<T> grad(&grad_full[i + offset]);
-                      eve::wide<T> mom(&mom_full[state_offset + i + offset]);
                       eve::wide<T> data(&data_full[i + offset]);
-
                       if (options_.maximize) grad = -grad;
 
                       auto update = [&]() {
-                        if (options_.momentum) {
-                          mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
-                          eve::store(mom, &mom_full[state_offset + i + offset]);
+                        if ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0) return grad;
 
-                          if (options_.nesterov) grad = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
-                        }
-                        if (options_.lambda) grad = eve::fma(eve::wide<T>(options_.lambda), data, grad);
+                        eve::wide<T> prev_grad(&prev_grad_full[state_offset + i + offset]);
+                        eve::wide<T> prev_update(&prev_update_full[state_offset + i + offset]);
+
+                        grad = eve::add(eve::sub(grad, prev_grad), prev_update);
+                        if (options_.lambda) grad = eve::fnma(eve::wide<T>(options_.lambda), data, grad);
 
                         return grad;
                       }();
 
                       data = eve::fma(eve::wide<T>(options_.lr), update, data);
+
                       eve::store(data, &data_full[i + offset]);
+                      eve::store(grad, &prev_grad_full[state_offset + i + offset]);
                     });
                   }
 
                   for (; i < end; ++i) {
                     T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-                    T mom = options_.momentum * mom_full[state_offset + i] + grad;
-                    mom_full[state_offset + i] = mom;
+                    T update = ((options_.recompute_every != -1) && state_.step % options_.recompute_every == 0)
+                      ? grad : grad - prev_grad_full[state_offset + i] + prev_update_full[state_offset + i];
 
-                    T update = options_.nesterov ? (options_.momentum * mom + grad) : mom;
                     if (options_.lambda) update = update - options_.lambda * data_full[i];
 
                     data_full[i] += options_.lr * update;
+                    prev_grad_full[state_offset + i] = grad;
+                    prev_update_full[state_offset + i] = update;
                   }
                 });
               }
@@ -132,7 +140,7 @@ namespace qgrad::optim {
         ar(name);
         if (name != optimizer_type()) this->handle_type_error(name);
 
-        ar(options_, state_.step, state_.momentum);
+        ar(options_, state_.step, state_.prev_grad, state_.prev_update);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
@@ -153,8 +161,7 @@ namespace qgrad::optim {
 
         cereal::BinaryOutputArchive ar(out);
         std::string name(optimizer_type());
-
-        ar(name, options_, state_.step, state_.momentum);
+        ar(name, options_, state_.step, state_.prev_grad, state_.prev_update);
 
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
@@ -167,7 +174,7 @@ namespace qgrad::optim {
       }
 
       std::string optimizer_type() const override {
-        std::string type = "SGD<";
+        std::string type = "SARAH<";
         bool first = true;
 
         std::apply([&](auto&... param_vecs) {
@@ -199,8 +206,8 @@ namespace qgrad::optim {
       }
 
     private:
-      SGDOptions options_;
-      SGDState<DedupedTuple> state_;
+      SarahOptions options_;
+      SarahState<DedupedTuple> state_;
       int num_proc_;
   };
 }

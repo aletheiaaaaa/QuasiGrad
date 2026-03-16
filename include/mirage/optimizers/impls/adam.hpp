@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <thread>
 
-namespace qgrad::optim {
+namespace mirage::optim {
   struct AdamOptions {
     float lr = 1e-4f;
     float beta1 = 0.9f;

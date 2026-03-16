@@ -3,32 +3,30 @@
 #include "../optimizer.hpp"
 #include "../../detail/utils.hpp"
 
-#include <cmath>
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
 #include <thread>
 
-namespace qgrad::optim {
-  struct LionOptions {
-    float lr = 1e-5f;
-    float beta1 = 0.9f;
-    float beta2 = 0.9f;
-    float epsilon = 1e-8;
+namespace mirage::optim {
+  struct SGDOptions {
+    float lr = 0.01f;
+    float momentum = 0.0f;
     float lambda = 0.0f;
 
+    bool nesterov = false;
     bool maximize = false;
   };
 
   template<typename DedupedTuple>
-  struct LionState : OptimizerState {
+  struct SGDState : public OptimizerState {
     ExtractedVector<DedupedTuple> momentum{};
   };
 
   template<typename DedupedTuple>
-  class Lion : public Optimizer<DedupedTuple> {
+  class SGD : public Optimizer<DedupedTuple> {
     public:
-      explicit Lion(ParameterPack<DedupedTuple> parameters, LionOptions options = {}, int num_proc = 1)
+      explicit SGD(ParameterPack<DedupedTuple> parameters, SGDOptions options = {}, int num_proc = 1)
         : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
@@ -75,35 +73,36 @@ namespace qgrad::optim {
 
                       eve::wide<T> grad(&grad_full[i + offset]);
                       eve::wide<T> mom(&mom_full[state_offset + i + offset]);
+                      eve::wide<T> data(&data_full[i + offset]);
 
                       if (options_.maximize) grad = -grad;
 
-                      eve::wide<T> beta1(options_.beta1);
-                      auto update = eve::fma(beta1, mom, grad);
-                      update = eve::fnma(beta1, grad, mom);
+                      auto update = [&]() {
+                        if (options_.momentum) {
+                          mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
+                          eve::store(mom, &mom_full[state_offset + i + offset]);
 
-                      eve::wide<T> data(&data_full[i + offset]);
+                          if (options_.nesterov) grad = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
+                        }
+                        if (options_.lambda) grad = eve::fma(eve::wide<T>(options_.lambda), data, grad);
 
-                      if (options_.lambda) update = eve::fnma(eve::wide<T>(options_.lambda), data, update);
-                      data = eve::fma(eve::wide<T>(options_.lr), eve::sign(update), data);
+                        return grad;
+                      }();
+
+                      data = eve::fma(eve::wide<T>(options_.lr), update, data);
                       eve::store(data, &data_full[i + offset]);
-
-                      eve::wide<T> beta2(options_.beta2);
-                      mom = eve::fma(beta2, mom, grad);
-                      mom = eve::fnma(beta2, grad, mom);
-                      eve::store(mom, &mom_full[state_offset + i + offset]);
                     });
                   }
 
                   for (; i < end; ++i) {
                     T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-                    T mom = options_.beta1 * mom_full[state_offset + i] + (1 - options_.beta1) * grad;
+                    T mom = options_.momentum * mom_full[state_offset + i] + grad;
+                    mom_full[state_offset + i] = mom;
 
-                    T update = std::copysign(options_.lr, mom);
-                    if (options_.lambda) update = -options_.lambda * data_full[i] + update;
+                    T update = options_.nesterov ? (options_.momentum * mom + grad) : mom;
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
 
-                    data_full[i] += update;
-                    mom_full[state_offset + i] = options_.beta2 * mom_full[state_offset + i] + (1 - options_.beta2) * grad;
+                    data_full[i] += options_.lr * update;
                   }
                 });
               }
@@ -154,6 +153,7 @@ namespace qgrad::optim {
 
         cereal::BinaryOutputArchive ar(out);
         std::string name(optimizer_type());
+
         ar(name, options_, state_.step, state_.momentum);
 
         std::apply([&](auto&... param_vecs) {
@@ -167,7 +167,7 @@ namespace qgrad::optim {
       }
 
       std::string optimizer_type() const override {
-        std::string type = "Lion<";
+        std::string type = "SGD<";
         bool first = true;
 
         std::apply([&](auto&... param_vecs) {
@@ -199,8 +199,8 @@ namespace qgrad::optim {
       }
 
     private:
-      LionOptions options_;
-      LionState<DedupedTuple> state_;
+      SGDOptions options_;
+      SGDState<DedupedTuple> state_;
       int num_proc_;
   };
 }

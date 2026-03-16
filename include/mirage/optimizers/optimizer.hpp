@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <sstream>
 
-namespace qgrad::optim {
+namespace mirage::optim {
   struct OptimizerState {
     int64_t step = 0;
   };

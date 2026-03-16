@@ -9,7 +9,7 @@
 
 #include "arch.hpp"
 
-namespace qgrad::detail {
+namespace mirage::detail {
   template<typename T>
   struct TypeName {
     static std::string name() { return "unknown"; }

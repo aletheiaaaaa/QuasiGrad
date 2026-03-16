@@ -2,7 +2,7 @@
 
 #include <tuple>
 
-namespace qgrad::detail {
+namespace mirage::detail {
   template <typename T, typename... Ts>
   concept ContainedInPack = (std::same_as<T, Ts> || ...);
 

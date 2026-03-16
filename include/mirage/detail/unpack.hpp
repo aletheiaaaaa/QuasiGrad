@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace qgrad::detail {
+namespace mirage::detail {
   template<typename T>
   struct is_span : std::false_type {};
 

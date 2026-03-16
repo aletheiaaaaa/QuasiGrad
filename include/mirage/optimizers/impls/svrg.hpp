@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <thread>
 
-namespace qgrad::optim {
+namespace mirage::optim {
   struct SVRGOptions {
     float lr = 0.5f;
     float lambda = 0.0f;

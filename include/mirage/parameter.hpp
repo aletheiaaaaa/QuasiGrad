@@ -26,7 +26,7 @@
 #include "detail/dedup.hpp"
 #include "detail/unpack.hpp"
 
-namespace qgrad {
+namespace mirage {
   struct Slice {
     static constexpr size_t Start = 0;
     static constexpr size_t End = std::numeric_limits<size_t>::max();

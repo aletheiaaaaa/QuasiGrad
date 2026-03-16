@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace qgrad::detail {
+namespace mirage::detail {
   enum class Arch : uint8_t {
     GENERIC,
     SSE4_1,
