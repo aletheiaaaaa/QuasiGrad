@@ -27,15 +27,15 @@
 #include "detail/unpack.hpp"
 
 namespace mirage {
-  struct Slice {
+  struct Range {
     static constexpr size_t Start = 0;
     static constexpr size_t End = std::numeric_limits<size_t>::max();
 
     size_t start, end;
 
-    Slice(size_t idx) : start(idx), end(idx) {};
-    Slice(size_t idx0, size_t idx1) : start(idx0), end(idx1) {};
-    Slice() : start(Start), end(End) {};
+    Range(size_t idx) : start(idx), end(idx) {};
+    Range(size_t idx0, size_t idx1) : start(idx0), end(idx1) {};
+    Range() : start(Start), end(End) {};
   };
 
   namespace detail {
@@ -46,7 +46,7 @@ namespace mirage {
     };
 
     inline ViewParams compute_view(
-      std::span<const Slice> slices,
+      std::span<const Range> slices,
       std::span<const size_t> src_shape,
       std::span<const size_t> src_strides
     ) {
@@ -56,7 +56,7 @@ namespace mirage {
       std::vector<size_t> strides;
 
       for (const auto& [idx, slice] : std::views::enumerate(slices)) {
-        assert((slice.end <= src_shape[idx] || slice.end == Slice::End) && "Array index out of bounds");
+        assert((slice.end <= src_shape[idx] || slice.end == Range::End) && "Array index out of bounds");
         assert((slice.start <= slice.end + 1) && "Slice should begin before it ends");
 
         offset += slice.start * src_strides[idx];
@@ -114,9 +114,9 @@ namespace mirage {
       using DataType = T;
 
       template<typename... Args>
-        requires (std::convertible_to<Args, Slice> && ...)
+        requires (std::convertible_to<Args, Range> && ...)
       View<T> operator[](Args... args) {
-        std::vector<Slice> slices{args...};
+        std::vector<Range> slices{args...};
         assert((slices.size() <= shape_.size()) && "There cannot be more slices than dimensions");
         while (slices.size() < shape_.size()) {
           slices.emplace_back();
@@ -132,9 +132,9 @@ namespace mirage {
       }
 
       template<typename... Args>
-        requires (std::convertible_to<Args, Slice> && ...)
+        requires (std::convertible_to<Args, Range> && ...)
       const View<const T> operator[](Args... args) const {
-        std::vector<Slice> slices{args...};
+        std::vector<Range> slices{args...};
         assert((slices.size() <= shape_.size()) && "There cannot be more slices than dimensions");
         while (slices.size() < shape_.size()) {
           slices.emplace_back();
@@ -348,9 +348,9 @@ namespace mirage {
       size_t numel() const { return data_.size(); }
 
       template<typename... Args>
-        requires (std::convertible_to<Args, Slice> && ...)
+        requires (std::convertible_to<Args, Range> && ...)
       View<T> operator[](Args... args) {
-        std::vector<Slice> slices{args...};
+        std::vector<Range> slices{args...};
         assert((slices.size() <= shape_.size()) && "There cannot be more slices than dimensions");
         while (slices.size() < shape_.size()) {
           slices.emplace_back();
@@ -366,9 +366,9 @@ namespace mirage {
       }
 
       template<typename... Args>
-        requires (std::convertible_to<Args, Slice> && ...)
+        requires (std::convertible_to<Args, Range> && ...)
       const View<const T> operator[](Args... args) const {
-        std::vector<Slice> slices{args...};
+        std::vector<Range> slices{args...};
         assert((slices.size() <= shape_.size()) && "There cannot be more slices than dimensions");
         while (slices.size() < shape_.size()) {
           slices.emplace_back();

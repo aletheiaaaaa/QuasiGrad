@@ -42,6 +42,21 @@ if(NOT cereal_FOUND)
   set(MIRAGE_CEREAL_FETCHED TRUE)
 endif()
 
+find_package(Eigen3 QUIET)
+if(NOT Eigen3_FOUND)
+  FetchContent_Declare(
+    Eigen
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG 5.0.1
+    EXCLUDE_FROM_ALL
+  )
+  set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+  set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(Eigen)
+  set(MIRAGE_EIGEN_FETCHED TRUE)
+endif()
+
 # Header-only library target
 add_library(mirage INTERFACE)
 add_library(mirage::mirage ALIAS mirage)
@@ -66,6 +81,12 @@ if(MIRAGE_CEREAL_FETCHED)
   target_include_directories(mirage INTERFACE $<BUILD_INTERFACE:${cereal_SOURCE_DIR}/include>)
 else()
   target_link_libraries(mirage INTERFACE cereal::cereal)
+endif()
+
+if(MIRAGE_EIGEN_FETCHED)
+  target_include_directories(mirage INTERFACE $<BUILD_INTERFACE:${eigen_SOURCE_DIR}>)
+else()
+  target_link_libraries(mirage INTERFACE Eigen3::Eigen)
 endif()
 
 # Compiler-specific settings
@@ -130,6 +151,12 @@ endif()
 
 if(MIRAGE_CEREAL_FETCHED)
   install(DIRECTORY ${cereal_SOURCE_DIR}/include/cereal
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+endif()
+
+if(MIRAGE_EIGEN_FETCHED)
+  install(DIRECTORY ${eigen_SOURCE_DIR}/Eigen
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 endif()

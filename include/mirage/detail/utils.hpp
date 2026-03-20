@@ -3,7 +3,7 @@
 #include <string>
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
+#include <utility>
 
 #include <eve/wide.hpp>
 
@@ -46,18 +46,5 @@ namespace mirage::detail {
     [&]<size_t... Is>(std::index_sequence<Is...>) {
       (func.template operator()<Is>(), ...);
     }(std::make_index_sequence<N>{});
-  }
-
-  template<typename T, typename F>
-  constexpr void dispatch(F&& func) {
-    if (std::is_same_v<T, float>) {
-      func.template operator()<float>();
-    } else if (std::is_same_v<T, double>) {
-      func.template operator()<double>();
-    } else if (std::is_same_v<T, int32_t>) {
-      func.template operator()<int32_t>();
-    } else {
-      throw std::runtime_error("Unsupported data type for detail operation");
-    }
   }
 }
