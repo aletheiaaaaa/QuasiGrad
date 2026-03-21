@@ -24,24 +24,25 @@ namespace mirage::optim {
 
   template<typename DedupedTuple>
   struct SVRGState : public OptimizerState {
-    ExtractedVector<DedupedTuple> ref_exact{};
-    ExtractedVector<DedupedTuple> ref_est{};
-    ExtractedVector<DedupedTuple> ref_data{};
+    detail::ExtractedVector<DedupedTuple> ref_exact{};
+    detail::ExtractedVector<DedupedTuple> ref_est{};
+    detail::ExtractedVector<DedupedTuple> ref_data{};
 
     bool use_ref = true;
   };
 
-  template<typename DedupedTuple>
-  class SVRG : public Optimizer<DedupedTuple> {
+  template<typename DedupedPack>
+    requires detail::NonConstPack<DedupedPack>
+  class SVRG : public Optimizer<DedupedPack> {
     public:
-      explicit SVRG(ParameterPack<DedupedTuple> parameters, SVRGOptions options = {}, int num_proc = 1)
-        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
+      explicit SVRG(ParameterPack<DedupedPack> parameters, SVRGOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedPack>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-              auto& ref_exact = std::get<ExtractType_t<ParamType>>(this->state_.ref_exact);
-              auto& ref_est = std::get<ExtractType_t<ParamType>>(this->state_.ref_est);
-              auto& ref_data = std::get<ExtractType_t<ParamType>>(this->state_.ref_data);
+              auto& ref_exact = std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_exact);
+              auto& ref_est = std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_est);
+              auto& ref_data = std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_data);
               for (auto& param_ref : param_vec) {
                 auto& param = param_ref.get();
                 using T = typename ParamType::DataType;
@@ -57,18 +58,18 @@ namespace mirage::optim {
       bool use_ref() const override { return state_.use_ref; }
 
       template<typename T>
-      ExtractedVector<T>& ref_exact() { return std::get<ExtractType_t<T>>(state_.ref_exact); }
+      detail::ExtractedVector<T>& ref_exact() { return std::get<detail::ExtractType_t<T>>(state_.ref_exact); }
       template<typename T>
-      ExtractedVector<T>& ref_est() { return std::get<ExtractType_t<T>>(state_.ref_est); }
+      detail::ExtractedVector<T>& ref_est() { return std::get<detail::ExtractType_t<T>>(state_.ref_est); }
       template<typename T>
-      ExtractedVector<T>& ref_data() { return std::get<ExtractType_t<T>>(state_.ref_data); }
+      detail::ExtractedVector<T>& ref_data() { return std::get<detail::ExtractType_t<T>>(state_.ref_data); }
 
       void step() override {
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& ref_exact_full = std::get<ExtractType_t<ParamType>>(state_.ref_exact);
-            auto& ref_est_full = std::get<ExtractType_t<ParamType>>(state_.ref_est);
+            auto& ref_exact_full = std::get<detail::ExtractType_t<ParamType>>(state_.ref_exact);
+            auto& ref_est_full = std::get<detail::ExtractType_t<ParamType>>(state_.ref_est);
 
             size_t state_offset = 0;
             for (auto param_ref : param_vec) {
@@ -194,7 +195,7 @@ namespace mirage::optim {
 
             if (!first) type += ", ";
             first = false;
-            type += PrintType<ParamType>::name() + "[";
+            type += detail::PrintType<ParamType>::name() + "[";
 
             bool pfirst = true;
             for (auto& param_ref : param_vec) {
@@ -218,7 +219,7 @@ namespace mirage::optim {
 
     private:
       SVRGOptions options_;
-      SVRGState<DedupedTuple> state_;
+      SVRGState<DedupedPack> state_;
       int num_proc_;
   };
 }

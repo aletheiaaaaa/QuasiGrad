@@ -10,10 +10,11 @@ namespace mirage::optim {
     int64_t step = 0;
   };
 
-  template<typename T>
+  template<typename DedupedPack>
+    requires detail::NonConstPack<DedupedPack>
   class Optimizer {
     public:
-      explicit Optimizer(ParameterPack<T> parameters) : parameters_(parameters) {}
+      explicit Optimizer(ParameterPack<DedupedPack> parameters) : parameters_(parameters) {}
 
       void zero_grad() {
         std::apply([](auto&... param_vecs) {
@@ -38,7 +39,7 @@ namespace mirage::optim {
 
     protected:
       OptimizerState state_;
-      ParameterPack<T> parameters_;
+      ParameterPack<DedupedPack> parameters_;
 
       void handle_type_error(const std::string& recieved) const {
         const std::string expected = optimizer_type();

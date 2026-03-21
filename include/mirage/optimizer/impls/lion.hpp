@@ -27,18 +27,19 @@ namespace mirage::optim {
 
   template<typename DedupedTuple>
   struct LionState : OptimizerState {
-    ExtractedVector<DedupedTuple> momentum{};
+    detail::ExtractedVector<DedupedTuple> momentum{};
   };
 
-  template<typename DedupedTuple>
-  class Lion : public Optimizer<DedupedTuple> {
+  template<typename DedupedPack>
+    requires detail::NonConstPack<DedupedPack>
+  class Lion : public Optimizer<DedupedPack> {
     public:
-      explicit Lion(ParameterPack<DedupedTuple> parameters, LionOptions options = {}, int num_proc = 1)
-        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
+      explicit Lion(ParameterPack<DedupedPack> parameters, LionOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedPack>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-              auto& mom = std::get<ExtractType_t<ParamType>>(this->state_.momentum);
+              auto& mom = std::get<detail::ExtractType_t<ParamType>>(this->state_.momentum);
               for (auto& param_ref : param_vec) {
                 auto& param = param_ref.get();
                 using T = typename ParamType::DataType;
@@ -52,7 +53,7 @@ namespace mirage::optim {
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& mom_full = std::get<ExtractType_t<ParamType>>(state_.momentum);
+            auto& mom_full = std::get<detail::ExtractType_t<ParamType>>(state_.momentum);
 
             size_t state_offset = 0;
             for (auto param_ref : param_vec) {
@@ -181,7 +182,7 @@ namespace mirage::optim {
 
             if (!first) type += ", ";
             first = false;
-            type += PrintType<ParamType>::name() + "[";
+            type += detail::PrintType<ParamType>::name() + "[";
 
             bool pfirst = true;
             for (auto& param_ref : param_vec) {
@@ -205,7 +206,7 @@ namespace mirage::optim {
 
     private:
       LionOptions options_;
-      LionState<DedupedTuple> state_;
+      LionState<DedupedPack> state_;
       int num_proc_;
   };
 }

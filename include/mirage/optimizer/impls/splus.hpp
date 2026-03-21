@@ -28,19 +28,20 @@ namespace mirage::optim {
 
   template<typename DedupedTuple>
   struct SPlusState : public OptimizerState {
-    ExtractedVector<DedupedTuple> momentum{};
-    ExtractedVector<DedupedTuple> left_velocity{};
-    ExtractedVector<DedupedTuple> right_velocity{};
-    ExtractedVector<DedupedTuple> left_eigenvectors{};
-    ExtractedVector<DedupedTuple> right_eigenvectors{};
-    ExtractedVector<DedupedTuple> param_ema{};
+    detail::ExtractedVector<DedupedTuple> momentum{};
+    detail::ExtractedVector<DedupedTuple> left_velocity{};
+    detail::ExtractedVector<DedupedTuple> right_velocity{};
+    detail::ExtractedVector<DedupedTuple> left_eigenvectors{};
+    detail::ExtractedVector<DedupedTuple> right_eigenvectors{};
+    detail::ExtractedVector<DedupedTuple> param_ema{};
   };
 
-  template<typename DedupedTuple>
-  class SPlus : public Optimizer<DedupedTuple> {
+  template<typename DedupedPack>
+    requires detail::NonConstPack<DedupedPack>
+  class SPlus : public Optimizer<DedupedPack> {
     public:
-      explicit SPlus(ParameterPack<DedupedTuple> parameters, SPlusOptions options = {}, int num_proc = 1)
-        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
+      explicit SPlus(ParameterPack<DedupedPack> parameters, SPlusOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedPack>(parameters), options_(options), num_proc_(num_proc) {
           assert(std::apply([](auto&... param_vecs) {
             return (std::all_of(param_vecs.begin(), param_vecs.end(),
               [](auto& p) { return p.get().rank() >= 2; }) && ...
@@ -50,12 +51,12 @@ namespace mirage::optim {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-              auto& mom = std::get<ExtractType_t<ParamType>>(this->state_.momentum);
-              auto& lvel = std::get<ExtractType_t<ParamType>>(this->state_.left_velocity);
-              auto& rvel = std::get<ExtractType_t<ParamType>>(this->state_.right_velocity);
-              auto& leig = std::get<ExtractType_t<ParamType>>(this->state_.left_eigenvectors);
-              auto& reig = std::get<ExtractType_t<ParamType>>(this->state_.right_eigenvectors);
-              auto& ema = std::get<ExtractType_t<ParamType>>(this->state_.param_ema);
+              auto& mom = std::get<detail::ExtractType_t<ParamType>>(this->state_.momentum);
+              auto& lvel = std::get<detail::ExtractType_t<ParamType>>(this->state_.left_velocity);
+              auto& rvel = std::get<detail::ExtractType_t<ParamType>>(this->state_.right_velocity);
+              auto& leig = std::get<detail::ExtractType_t<ParamType>>(this->state_.left_eigenvectors);
+              auto& reig = std::get<detail::ExtractType_t<ParamType>>(this->state_.right_eigenvectors);
+              auto& ema = std::get<detail::ExtractType_t<ParamType>>(this->state_.param_ema);
               for (auto& param_ref : param_vec) {
                 auto& param = param_ref.get();
                 using T = typename ParamType::DataType;
@@ -74,10 +75,10 @@ namespace mirage::optim {
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& mom_full = std::get<ExtractType_t<ParamType>>(state_.momentum);
-            auto& lvel_full = std::get<ExtractType_t<ParamType>>(state_.left_velocity);
-            auto& rvel_full = std::get<ExtractType_t<ParamType>>(state_.right_velocity);
-            auto& ema_full = std::get<ExtractType_t<ParamType>>(state_.param_ema);
+            auto& mom_full = std::get<detail::ExtractType_t<ParamType>>(state_.momentum);
+            auto& lvel_full = std::get<detail::ExtractType_t<ParamType>>(state_.left_velocity);
+            auto& rvel_full = std::get<detail::ExtractType_t<ParamType>>(state_.right_velocity);
+            auto& ema_full = std::get<detail::ExtractType_t<ParamType>>(state_.param_ema);
 
             size_t state_offset = 0;
             for (auto param_ref : param_vec) {
@@ -168,7 +169,7 @@ namespace mirage::optim {
 
             if (!first) type += ", ";
             first = false;
-            type += PrintType<ParamType>::name() + "[";
+            type += detail::PrintType<ParamType>::name() + "[";
 
             bool pfirst = true;
             for (auto& param_ref : param_vec) {
@@ -192,7 +193,7 @@ namespace mirage::optim {
 
     private:
       SPlusOptions options_;
-      SPlusState<DedupedTuple> state_;
+      SPlusState<DedupedPack> state_;
       int num_proc_ = 1;
   };
 }

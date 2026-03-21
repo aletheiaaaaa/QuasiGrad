@@ -602,80 +602,86 @@ namespace mirage {
       }
   };
 
-  template<typename T>
-  concept ParamLike = T::is_param_like::value;
-
-  template<typename T>
-  using RefVec = std::vector<std::reference_wrapper<T>>;
+  namespace detail {
+    template<typename T>
+    using RefVec = std::vector<std::reference_wrapper<T>>;
+  }
 
   template<typename DedupedTuple>
   struct ParameterPack {
-    detail::TransformTuple_t<RefVec, DedupedTuple> data{};
+    detail::TransformTuple_t<detail::RefVec, DedupedTuple> data{};
 
     template<typename... Ts>
       requires (std::derived_from<Ts, Parameter<typename Ts::DataType>> && ...)
     ParameterPack(Ts&... params) {
-      (std::get<RefVec<Ts>>(data).emplace_back(params), ...);
+      (std::get<detail::RefVec<Ts>>(data).emplace_back(params), ...);
     }
 
     template<typename T>
       requires std::derived_from<T, Parameter<typename T::DataType>>
     void add_parameter(T& param) {
-      std::get<RefVec<T>>(data).emplace_back(param);
+      std::get<detail::RefVec<T>>(data).emplace_back(param);
     }
   };
   template<typename... Ts>
   ParameterPack(Ts&...) -> ParameterPack<detail::DeduplicatedPack_t<std::decay_t<Ts>...>>;
 
-  template<typename... Ts>
-  concept IsNonConst = (!std::is_const_v<Ts> && ...);
+  namespace detail {
+    template<typename T>
+    concept ParamLike = T::is_param_like::value;
 
-  template<typename T, typename TypeTuple>
-  struct TaggedVector : private std::vector<T> {
-    using std::vector<T>::vector;
-    using std::vector<T>::operator=;
-    using std::vector<T>::operator[];
-    using std::vector<T>::data;
-    using std::vector<T>::begin;
-    using std::vector<T>::end;
-    using std::vector<T>::insert;
+    template<typename T>
+    concept NonConstPack = []<typename... Ts>(std::tuple<Ts...>*) {
+      return ((!std::is_const_v<Ts> && ParamLike<Ts>) && ...);
+    }(static_cast<T*>(nullptr));
 
-    TaggedVector(std::vector<T>&& v) : std::vector<T>(std::move(v)) {}
-    TaggedVector(const std::vector<T>& v) : std::vector<T>(v) {}
+    template<typename T, typename TypeTuple>
+    struct TaggedVector : private std::vector<T> {
+      using std::vector<T>::vector;
+      using std::vector<T>::operator=;
+      using std::vector<T>::operator[];
+      using std::vector<T>::data;
+      using std::vector<T>::begin;
+      using std::vector<T>::end;
+      using std::vector<T>::insert;
 
-    template<class Archive>
-    void save(Archive& ar) const {
-      ar(static_cast<const std::vector<T>&>(*this));
-    }
+      TaggedVector(std::vector<T>&& v) : std::vector<T>(std::move(v)) {}
+      TaggedVector(const std::vector<T>& v) : std::vector<T>(v) {}
 
-    template<class Archive>
-    void load(Archive& ar) {
-      ar(static_cast<std::vector<T>&>(*this));
-    }
-  };
+      template<class Archive>
+      void save(Archive& ar) const {
+        ar(static_cast<const std::vector<T>&>(*this));
+      }
 
-  template<typename T>
-  struct ExtractType {};
-  template<typename T>
-  struct ExtractType<Parameter<T>> { using Type = TaggedVector<T, std::tuple<T>>; };
-  template<typename Q, typename T>
-  struct ExtractType<Quantized<Q, T>> { using Type = TaggedVector<T, std::tuple<Q, T>>; };
-  template<typename T>
-  using ExtractType_t = typename ExtractType<T>::Type;
+      template<class Archive>
+      void load(Archive& ar) {
+        ar(static_cast<std::vector<T>&>(*this));
+      }
+    };
 
-  template<typename T>
-  struct PrintType {
-    static std::string name() { return "unknown"; }
-  };
-  template<typename T>
-  struct PrintType<Parameter<T>> { 
-    static std::string name() { return "Parameter<" + detail::TypeName<T>::name() + ">"; }
-  };
-  template<typename Q, typename T>
-  struct PrintType<Quantized<Q, T>> {
-    static std::string name() { return "Quantized<" + detail::TypeName<Q>::name() + ", " + detail::TypeName<T>::name() + ">"; }
-  };
+    template<typename T>
+    struct ExtractType {};
+    template<typename T>
+    struct ExtractType<Parameter<T>> { using Type = TaggedVector<T, std::tuple<T>>; };
+    template<typename Q, typename T>
+    struct ExtractType<Quantized<Q, T>> { using Type = TaggedVector<T, std::tuple<Q, T>>; };
+    template<typename T>
+    using ExtractType_t = typename ExtractType<T>::Type;
 
-  template<typename DedupedTuple>
-  using ExtractedVector = detail::TransformTuple_t<ExtractType_t, DedupedTuple>;
+    template<typename T>
+    struct PrintType {
+      static std::string name() { return "unknown"; }
+    };
+    template<typename T>
+    struct PrintType<Parameter<T>> { 
+      static std::string name() { return "Parameter<" + detail::TypeName<T>::name() + ">"; }
+    };
+    template<typename Q, typename T>
+    struct PrintType<Quantized<Q, T>> {
+      static std::string name() { return "Quantized<" + detail::TypeName<Q>::name() + ", " + detail::TypeName<T>::name() + ">"; }
+    };
+
+    template<typename DedupedTuple>
+    using ExtractedVector = detail::TransformTuple_t<ExtractType_t, DedupedTuple>;
+  }
 }

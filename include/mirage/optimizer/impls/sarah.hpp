@@ -24,22 +24,23 @@ namespace mirage::optim {
 
   template<typename DedupedTuple>
   struct SarahState : public OptimizerState {
-    ExtractedVector<DedupedTuple> prev_grad{};
-    ExtractedVector<DedupedTuple> prev_update{};
+    detail::ExtractedVector<DedupedTuple> prev_grad{};
+    detail::ExtractedVector<DedupedTuple> prev_update{};
   };
 
-  template<typename DedupedTuple>
-  class Sarah : public Optimizer<DedupedTuple> {
+  template<typename DedupedPack>
+    requires detail::NonConstPack<DedupedPack>
+  class Sarah : public Optimizer<DedupedPack> {
     public:
-      explicit Sarah(ParameterPack<DedupedTuple> parameters, SarahOptions options = {}, int num_proc = 1)
-        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
+      explicit Sarah(ParameterPack<DedupedPack> parameters, SarahOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedPack>(parameters), options_(options), num_proc_(num_proc) {
           if ((options_.recompute_every != -1) && options_.recompute_every == 0) throw std::invalid_argument("Recompute every must be greater than 0 when recompute is enabled");
 
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-              auto& prev_grad = std::get<ExtractType_t<ParamType>>(this->state_.prev_grad);
-              auto& prev_update = std::get<ExtractType_t<ParamType>>(this->state_.prev_update);
+              auto& prev_grad = std::get<detail::ExtractType_t<ParamType>>(this->state_.prev_grad);
+              auto& prev_update = std::get<detail::ExtractType_t<ParamType>>(this->state_.prev_update);
               for (auto& param_ref : param_vec) {
                 auto& param = param_ref.get();
                 using T = typename ParamType::DataType;
@@ -56,8 +57,8 @@ namespace mirage::optim {
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& prev_grad_full = std::get<ExtractType_t<ParamType>>(state_.prev_grad);
-            auto& prev_update_full = std::get<ExtractType_t<ParamType>>(state_.prev_update);
+            auto& prev_grad_full = std::get<detail::ExtractType_t<ParamType>>(state_.prev_grad);
+            auto& prev_update_full = std::get<detail::ExtractType_t<ParamType>>(state_.prev_update);
 
             size_t state_offset = 0;
             for (auto param_ref : param_vec) {
@@ -188,7 +189,7 @@ namespace mirage::optim {
 
             if (!first) type += ", ";
             first = false;
-            type += PrintType<ParamType>::name() + "[";
+            type += detail::PrintType<ParamType>::name() + "[";
 
             bool pfirst = true;
             for (auto& param_ref : param_vec) {
@@ -212,7 +213,7 @@ namespace mirage::optim {
 
     private:
       SarahOptions options_;
-      SarahState<DedupedTuple> state_;
+      SarahState<DedupedPack> state_;
       int num_proc_;
   };
 }

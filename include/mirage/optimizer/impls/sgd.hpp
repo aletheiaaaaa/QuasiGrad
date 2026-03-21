@@ -25,18 +25,19 @@ namespace mirage::optim {
 
   template<typename DedupedTuple>
   struct SGDState : public OptimizerState {
-    ExtractedVector<DedupedTuple> momentum{};
+    detail::ExtractedVector<DedupedTuple> momentum{};
   };
 
-  template<typename DedupedTuple>
-  class SGD : public Optimizer<DedupedTuple> {
+  template<typename DedupedPack>
+    requires detail::NonConstPack<DedupedPack>
+  class SGD : public Optimizer<DedupedPack> {
     public:
-      explicit SGD(ParameterPack<DedupedTuple> parameters, SGDOptions options = {}, int num_proc = 1)
-        : Optimizer<DedupedTuple>(parameters), options_(options), num_proc_(num_proc) {
+      explicit SGD(ParameterPack<DedupedPack> parameters, SGDOptions options = {}, int num_proc = 1)
+        : Optimizer<DedupedPack>(parameters), options_(options), num_proc_(num_proc) {
           std::apply([&](auto&... param_vecs) {
             ([&](auto& param_vec) {
               using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-              auto& mom = std::get<ExtractType_t<ParamType>>(this->state_.momentum);
+              auto& mom = std::get<detail::ExtractType_t<ParamType>>(this->state_.momentum);
               for (auto& param_ref : param_vec) {
                 auto& param = param_ref.get();
                 using T = typename ParamType::DataType;
@@ -50,7 +51,7 @@ namespace mirage::optim {
         std::apply([&](auto&... param_vecs) {
           ([&](auto& param_vec) {
             using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
-            auto& mom_full = std::get<ExtractType_t<ParamType>>(state_.momentum);
+            auto& mom_full = std::get<detail::ExtractType_t<ParamType>>(state_.momentum);
 
             size_t state_offset = 0;
             for (auto param_ref : param_vec) {
@@ -181,7 +182,7 @@ namespace mirage::optim {
 
             if (!first) type += ", ";
             first = false;
-            type += PrintType<ParamType>::name() + "[";
+            type += detail::PrintType<ParamType>::name() + "[";
 
             bool pfirst = true;
             for (auto& param_ref : param_vec) {
@@ -205,7 +206,7 @@ namespace mirage::optim {
 
     private:
       SGDOptions options_;
-      SGDState<DedupedTuple> state_;
+      SGDState<DedupedPack> state_;
       int num_proc_;
   };
 }
