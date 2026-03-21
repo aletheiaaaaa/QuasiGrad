@@ -18,6 +18,11 @@ namespace mirage::optim {
 
     bool maximize = false;
     bool use_adazo = false;
+
+    template<class Archive>
+    void serialize(Archive& ar) {
+      ar(lr, beta1, beta2, epsilon, lambda, maximize, use_adazo);
+    }
   };
 
   template<typename DedupedTuple>

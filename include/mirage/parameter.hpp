@@ -1,5 +1,6 @@
 #pragma once
 
+#include <type_traits>
 #include <vector>
 #include <cstdint>
 #include <cstddef>
@@ -625,6 +626,9 @@ namespace mirage {
   };
   template<typename... Ts>
   ParameterPack(Ts&...) -> ParameterPack<detail::DeduplicatedPack_t<std::decay_t<Ts>...>>;
+
+  template<typename... Ts>
+  concept IsNonConst = (!std::is_const_v<Ts> && ...);
 
   template<typename T, typename TypeTuple>
   struct TaggedVector : private std::vector<T> {

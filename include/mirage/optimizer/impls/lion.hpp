@@ -18,6 +18,11 @@ namespace mirage::optim {
     float lambda = 0.0f;
 
     bool maximize = false;
+
+    template<class Archive>
+    void serialize(Archive& ar) {
+      ar(lr, beta1, beta2, epsilon, lambda, maximize);
+    }
   };
 
   template<typename DedupedTuple>

@@ -19,6 +19,11 @@ namespace mirage::optim {
     int decompose_every = 64;
 
     bool maximize = false;
+
+    template<class Archive>
+    void serialize(Archive& ar) {
+      ar(lr, beta1, beta2, beta3, lambda, decompose_every, maximize);
+    }
   };
 
   template<typename DedupedTuple>

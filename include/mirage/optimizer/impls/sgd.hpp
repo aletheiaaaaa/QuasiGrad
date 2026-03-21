@@ -16,6 +16,11 @@ namespace mirage::optim {
 
     bool nesterov = false;
     bool maximize = false;
+
+    template<class Archive>
+    void serialize(Archive& ar) {
+      ar(lr, momentum, lambda, nesterov, maximize);
+    }
   };
 
   template<typename DedupedTuple>
