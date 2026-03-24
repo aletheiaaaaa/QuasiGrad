@@ -14,8 +14,7 @@ template <typename DedupedPack>
   requires detail::NonConstPack<DedupedPack>
 class Optimizer {
   public:
-  explicit Optimizer(ParameterPack<DedupedPack> parameters)
-      : parameters_(parameters) {}
+  explicit Optimizer(ParameterPack<DedupedPack> parameters) : parameters_(parameters) {}
 
   void zero_grad() {
     std::apply(
@@ -65,9 +64,9 @@ class Optimizer {
 
     auto get_types = [](const std::string& body) {
       std::vector<std::string> types;
-      size_t depth = 0, start = 0;
+      int depth = 0, start = 0;
 
-      for (size_t i = 0; i < body.size(); ++i) {
+      for (int i = 0; i < body.size(); ++i) {
         if (body[i] == '<')
           ++depth;
         else if (body[i] == '>')
@@ -99,9 +98,9 @@ class Optimizer {
 
       std::vector<std::string> shapes;
       std::string inner = group.substr(open + 1, close - open - 1);
-      size_t start = 0;
+      int start = 0;
 
-      for (size_t i = 0; i <= inner.size(); ++i) {
+      for (int i = 0; i <= inner.size(); ++i) {
         if (i == inner.size() || inner[i] == ',') {
           shapes.push_back(inner.substr(start, i - start));
           start = i + 1;
@@ -115,8 +114,7 @@ class Optimizer {
     std::string got_name = get_name(recieved);
 
     if (exp_name != got_name) {
-      err << "Optimizer name differs: expected '" << exp_name << "', got '"
-          << got_name << "'";
+      err << "Optimizer name differs: expected '" << exp_name << "', got '" << got_name << "'";
       throw std::runtime_error(err.str());
     }
 
@@ -124,20 +122,20 @@ class Optimizer {
     auto got_types = get_types(get_body(recieved));
 
     if (exp_types.size() != got_types.size()) {
-      err << "Number of parameter types differs: expected " << exp_types.size()
-          << ", got " << got_types.size();
+      err << "Number of parameter types differs: expected " << exp_types.size() << ", got "
+          << got_types.size();
       throw std::runtime_error(err.str());
     }
 
-    for (size_t i = 0; i < exp_types.size(); ++i) {
+    for (int i = 0; i < exp_types.size(); ++i) {
       if (exp_types[i] == got_types[i]) continue;
 
       std::string exp_tn = get_type_name(exp_types[i]);
       std::string got_tn = get_type_name(got_types[i]);
 
       if (exp_tn != got_tn) {
-        err << "Parameter group " << i << " dtype differs: expected '" << exp_tn
-            << "', got '" << got_tn << "'";
+        err << "Parameter group " << i << " dtype differs: expected '" << exp_tn << "', got '"
+            << got_tn << "'";
         throw std::runtime_error(err.str());
       }
 
@@ -145,25 +143,21 @@ class Optimizer {
       auto got_shapes = get_shapes(got_types[i]);
 
       if (exp_shapes.size() != got_shapes.size()) {
-        err << "Parameter group " << i << " (" << exp_tn
-            << ") count differs: expected " << exp_shapes.size()
-            << " parameters, got " << got_shapes.size();
+        err << "Parameter group " << i << " (" << exp_tn << ") count differs: expected "
+            << exp_shapes.size() << " parameters, got " << got_shapes.size();
         throw std::runtime_error(err.str());
       }
 
-      for (size_t j = 0; j < exp_shapes.size(); ++j) {
+      for (int j = 0; j < exp_shapes.size(); ++j) {
         if (exp_shapes[j] != got_shapes[j]) {
-          err << "Parameter group " << i << " (" << exp_tn << ") parameter "
-              << j << " shape differs: expected " << exp_shapes[j] << ", got "
-              << got_shapes[j];
+          err << "Parameter group " << i << " (" << exp_tn << ") parameter " << j
+              << " shape differs: expected " << exp_shapes[j] << ", got " << got_shapes[j];
           throw std::runtime_error(err.str());
         }
       }
     }
 
-    throw std::runtime_error(
-      "Optimizer type mismatch: expected " + expected + ", got " + recieved
-    );
+    throw std::runtime_error("Optimizer type mismatch: expected " + expected + ", got " + recieved);
   }
 };
 }  // namespace mirage::optim

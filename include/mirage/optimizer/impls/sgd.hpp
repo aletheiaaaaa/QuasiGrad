@@ -25,9 +25,9 @@ struct SGDOptions {
   }
 };
 
-template <typename DedupedTuple>
+template <typename TypeTuple>
 struct SGDState : public OptimizerState {
-  detail::ExtractedVector<DedupedTuple> momentum{};
+  detail::ExtractedVector<TypeTuple> momentum{};
 };
 
 template <typename DedupedPack>
@@ -35,15 +35,13 @@ template <typename DedupedPack>
 class SGD : public Optimizer<DedupedPack> {
   public:
   explicit SGD(ParameterPack<DedupedPack> parameters, SGDOptions options = {})
-      : Optimizer<DedupedPack>(parameters), options_(options) {
+    : Optimizer<DedupedPack>(parameters), options_(options) {
     std::apply(
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
-            auto& mom =
-              std::get<detail::ExtractType_t<ParamType>>(this->state_.momentum);
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
+            auto& mom = std::get<detail::ExtractType_t<ParamType>>(this->state_.momentum);
             for (auto& param_ref : param_vec) {
               auto& param = param_ref.get();
               using T = typename ParamType::DataType;
@@ -61,12 +59,10 @@ class SGD : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
-            auto& mom_full =
-              std::get<detail::ExtractType_t<ParamType>>(state_.momentum);
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
+            auto& mom_full = std::get<detail::ExtractType_t<ParamType>>(state_.momentum);
 
-            size_t state_offset = 0;
+            int state_offset = 0;
             for (auto param_ref : param_vec) {
               auto& param = param_ref.get();
               using T = typename ParamType::DataType;
@@ -74,23 +70,21 @@ class SGD : public Optimizer<DedupedPack> {
               auto& grad_full = param.grad();
               auto& data_full = param.data();
 
-              constexpr size_t vec_size = eve::wide<T>::size();
-              constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
+              constexpr int vec_size = eve::wide<T>::size();
+              constexpr int unroll_factor = detail::UNROLL_FACTOR;
 
               std::vector<std::thread> threads;
-              size_t chunk_size =
-                (param.numel() + options_.num_proc - 1) / options_.num_proc;
+              int chunk_size = (param.numel() + options_.num_proc - 1) / options_.num_proc;
 
-              for (size_t t = 0; t < options_.num_proc; ++t) {
+              for (int t = 0; t < options_.num_proc; ++t) {
                 threads.emplace_back([&, t]() {
-                  size_t start = t * chunk_size;
-                  size_t end = std::min(start + chunk_size, param.numel());
+                  int start = t * chunk_size;
+                  int end = std::min(start + chunk_size, param.numel());
 
-                  size_t i = start;
-                  for (; i + vec_size * unroll_factor <= end;
-                       i += vec_size * unroll_factor) {
-                    detail::unroll<unroll_factor>([&]<size_t index>() {
-                      constexpr size_t offset = index * vec_size;
+                  int i = start;
+                  for (; i + vec_size * unroll_factor <= end; i += vec_size * unroll_factor) {
+                    detail::unroll<unroll_factor>([&]<int index>() {
+                      constexpr int offset = index * vec_size;
 
                       eve::wide<T> grad(&grad_full[i + offset]);
                       eve::wide<T> mom(&mom_full[state_offset + i + offset]);
@@ -100,19 +94,14 @@ class SGD : public Optimizer<DedupedPack> {
 
                       auto update = [&]() {
                         if (options_.momentum) {
-                          mom = eve::fma(
-                            eve::wide<T>(options_.momentum), mom, grad
-                          );
+                          mom = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
                           eve::store(mom, &mom_full[state_offset + i + offset]);
 
                           if (options_.nesterov)
-                            grad = eve::fma(
-                              eve::wide<T>(options_.momentum), mom, grad
-                            );
+                            grad = eve::fma(eve::wide<T>(options_.momentum), mom, grad);
                         }
                         if (options_.lambda)
-                          grad =
-                            eve::fma(eve::wide<T>(options_.lambda), data, grad);
+                          grad = eve::fma(eve::wide<T>(options_.lambda), data, grad);
 
                         return grad;
                       }();
@@ -124,15 +113,11 @@ class SGD : public Optimizer<DedupedPack> {
 
                   for (; i < end; ++i) {
                     T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-                    T mom =
-                      options_.momentum * mom_full[state_offset + i] + grad;
+                    T mom = options_.momentum * mom_full[state_offset + i] + grad;
                     mom_full[state_offset + i] = mom;
 
-                    T update = options_.nesterov
-                                 ? (options_.momentum * mom + grad)
-                                 : mom;
-                    if (options_.lambda)
-                      update = update - options_.lambda * data_full[i];
+                    T update = options_.nesterov ? (options_.momentum * mom + grad) : mom;
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
 
                     data_full[i] += options_.lr * update;
                   }
@@ -157,8 +142,7 @@ class SGD : public Optimizer<DedupedPack> {
     std::filesystem::path path(path_str);
     path.replace_extension(".bin");
 
-    if (!std::filesystem::exists(path))
-      throw std::runtime_error("File not found: " + path_str);
+    if (!std::filesystem::exists(path)) throw std::runtime_error("File not found: " + path_str);
 
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("Failed to open file: " + path_str);
@@ -220,8 +204,7 @@ class SGD : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
 
             if (!first) type += ", ";
             first = false;
@@ -233,7 +216,7 @@ class SGD : public Optimizer<DedupedPack> {
               pfirst = false;
 
               auto& shape = param_ref.get().size();
-              for (size_t i = 0; i < shape.size(); ++i) {
+              for (int i = 0; i < shape.size(); ++i) {
                 if (i > 0) type += "x";
                 type += std::to_string(shape[i]);
               }

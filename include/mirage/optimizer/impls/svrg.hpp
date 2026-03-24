@@ -24,11 +24,11 @@ struct SVRGOptions {
   }
 };
 
-template <typename DedupedTuple>
+template <typename TypeTuple>
 struct SVRGState : public OptimizerState {
-  detail::ExtractedVector<DedupedTuple> ref_exact{};
-  detail::ExtractedVector<DedupedTuple> ref_est{};
-  detail::ExtractedVector<DedupedTuple> ref_data{};
+  detail::ExtractedVector<TypeTuple> ref_exact{};
+  detail::ExtractedVector<TypeTuple> ref_est{};
+  detail::ExtractedVector<TypeTuple> ref_data{};
 
   bool use_ref = true;
 };
@@ -38,20 +38,15 @@ template <typename DedupedPack>
 class SVRG : public Optimizer<DedupedPack> {
   public:
   explicit SVRG(ParameterPack<DedupedPack> parameters, SVRGOptions options = {})
-      : Optimizer<DedupedPack>(parameters), options_(options) {
+    : Optimizer<DedupedPack>(parameters), options_(options) {
     std::apply(
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
-            auto& ref_exact = std::get<detail::ExtractType_t<ParamType>>(
-              this->state_.ref_exact
-            );
-            auto& ref_est =
-              std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_est);
-            auto& ref_data =
-              std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_data);
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
+            auto& ref_exact = std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_exact);
+            auto& ref_est = std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_est);
+            auto& ref_data = std::get<detail::ExtractType_t<ParamType>>(this->state_.ref_data);
             for (auto& param_ref : param_vec) {
               auto& param = param_ref.get();
               using T = typename ParamType::DataType;
@@ -67,8 +62,7 @@ class SVRG : public Optimizer<DedupedPack> {
   }
 
   bool recompute() const override {
-    return (options_.recompute_every != -1) &&
-           state_.step % options_.recompute_every == 0;
+    return (options_.recompute_every != -1) && state_.step % options_.recompute_every == 0;
   }
   bool use_ref() const override { return state_.use_ref; }
 
@@ -90,37 +84,32 @@ class SVRG : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
-            auto& ref_exact_full =
-              std::get<detail::ExtractType_t<ParamType>>(state_.ref_exact);
-            auto& ref_est_full =
-              std::get<detail::ExtractType_t<ParamType>>(state_.ref_est);
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
+            auto& ref_exact_full = std::get<detail::ExtractType_t<ParamType>>(state_.ref_exact);
+            auto& ref_est_full = std::get<detail::ExtractType_t<ParamType>>(state_.ref_est);
 
-            size_t state_offset = 0;
+            int state_offset = 0;
             for (auto param_ref : param_vec) {
               auto& param = param_ref.get();
               using T = typename ParamType::DataType;
               auto& grad_full = param.grad();
               auto& data_full = param.data();
 
-              constexpr size_t vec_size = eve::wide<T>::size();
-              constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
+              constexpr int vec_size = eve::wide<T>::size();
+              constexpr int unroll_factor = detail::UNROLL_FACTOR;
 
               std::vector<std::thread> threads;
-              size_t chunk_size =
-                (param.numel() + options_.num_proc - 1) / options_.num_proc;
+              int chunk_size = (param.numel() + options_.num_proc - 1) / options_.num_proc;
 
-              for (size_t t = 0; t < options_.num_proc; ++t) {
+              for (int t = 0; t < options_.num_proc; ++t) {
                 threads.emplace_back([&, t]() {
-                  size_t start = t * chunk_size;
-                  size_t end = std::min(start + chunk_size, param.numel());
+                  int start = t * chunk_size;
+                  int end = std::min(start + chunk_size, param.numel());
 
-                  size_t i = start;
-                  for (; i + vec_size * unroll_factor <= end;
-                       i += vec_size * unroll_factor) {
-                    detail::unroll<unroll_factor>([&]<size_t index>() {
-                      constexpr size_t off = index * vec_size;
+                  int i = start;
+                  for (; i + vec_size * unroll_factor <= end; i += vec_size * unroll_factor) {
+                    detail::unroll<unroll_factor>([&]<int index>() {
+                      constexpr int off = index * vec_size;
 
                       eve::wide<T> grad(&grad_full[i + off]);
                       eve::wide<T> data(&data_full[i + off]);
@@ -133,18 +122,12 @@ class SVRG : public Optimizer<DedupedPack> {
                         )
                           return grad;
 
-                        eve::wide<T> ref_exact(
-                          &ref_exact_full[state_offset + i + off]
-                        );
-                        eve::wide<T> ref_est(
-                          &ref_est_full[state_offset + i + off]
-                        );
+                        eve::wide<T> ref_exact(&ref_exact_full[state_offset + i + off]);
+                        eve::wide<T> ref_est(&ref_est_full[state_offset + i + off]);
 
                         grad = eve::add(eve::sub(grad, ref_est), ref_exact);
                         if (options_.lambda)
-                          grad = eve::fnma(
-                            eve::wide<T>(options_.lambda), data, grad
-                          );
+                          grad = eve::fnma(eve::wide<T>(options_.lambda), data, grad);
 
                         return grad;
                       }();
@@ -156,14 +139,13 @@ class SVRG : public Optimizer<DedupedPack> {
 
                   for (; i < end; ++i) {
                     T grad = options_.maximize ? -grad_full[i] : grad_full[i];
-                    T update = ((options_.recompute_every != -1) &&
-                                state_.step % options_.recompute_every == 0)
-                                 ? grad
-                                 : grad - ref_est_full[state_offset + i] +
-                                     ref_exact_full[state_offset + i];
+                    T update =
+                      ((options_.recompute_every != -1) &&
+                       state_.step % options_.recompute_every == 0)
+                        ? grad
+                        : grad - ref_est_full[state_offset + i] + ref_exact_full[state_offset + i];
 
-                    if (options_.lambda)
-                      update = update - options_.lambda * data_full[i];
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
                     data_full[i] += options_.lr * update;
                   }
                 });
@@ -188,8 +170,7 @@ class SVRG : public Optimizer<DedupedPack> {
     std::filesystem::path path(path_str);
     path.replace_extension(".bin");
 
-    if (!std::filesystem::exists(path))
-      throw std::runtime_error("File not found: " + path_str);
+    if (!std::filesystem::exists(path)) throw std::runtime_error("File not found: " + path_str);
 
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("Failed to open file: " + path_str);
@@ -250,8 +231,7 @@ class SVRG : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
 
             if (!first) type += ", ";
             first = false;
@@ -263,7 +243,7 @@ class SVRG : public Optimizer<DedupedPack> {
               pfirst = false;
 
               auto& shape = param_ref.get().size();
-              for (size_t i = 0; i < shape.size(); ++i) {
+              for (int i = 0; i < shape.size(); ++i) {
                 if (i > 0) type += "x";
                 type += std::to_string(shape[i]);
               }

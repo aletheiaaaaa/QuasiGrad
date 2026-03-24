@@ -8,10 +8,8 @@ concept ContainedInPack = (std::same_as<T, Ts> || ...);
 
 template <typename T, typename... Ts>
 struct AppendIfNotInPack {
-  using Type = std::conditional_t<
-    ContainedInPack<T, Ts...>,
-    std::tuple<Ts...>,
-    std::tuple<Ts..., T>>;
+  using Type =
+    std::conditional_t<ContainedInPack<T, Ts...>, std::tuple<Ts...>, std::tuple<Ts..., T>>;
 };
 template <typename T, typename... Ts>
 using AppendIfNotInPack_t = AppendIfNotInPack<T, Ts...>::Type;
@@ -26,9 +24,8 @@ template <template <typename...> typename Trait, typename Tuple>
 using ApplyPackTraitWithTuple_t = ApplyPackTraitWithTuple<Trait, Tuple>::Type;
 
 template <typename T, typename Tuple>
-using PrependToTuple_t = decltype(std::tuple_cat(
-  std::declval<std::tuple<T>>(), std::declval<Tuple>()
-));
+using PrependToTuple_t =
+  decltype(std::tuple_cat(std::declval<std::tuple<T>>(), std::declval<Tuple>()));
 
 template <typename T, typename... Ts>
 struct DeduplicatedPack {

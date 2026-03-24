@@ -24,20 +24,18 @@ struct SarahOptions {
   }
 };
 
-template <typename DedupedTuple>
+template <typename TypeTuple>
 struct SarahState : public OptimizerState {
-  detail::ExtractedVector<DedupedTuple> prev_grad{};
-  detail::ExtractedVector<DedupedTuple> prev_update{};
+  detail::ExtractedVector<TypeTuple> prev_grad{};
+  detail::ExtractedVector<TypeTuple> prev_update{};
 };
 
 template <typename DedupedPack>
   requires detail::NonConstPack<DedupedPack>
 class Sarah : public Optimizer<DedupedPack> {
   public:
-  explicit Sarah(
-    ParameterPack<DedupedPack> parameters, SarahOptions options = {}
-  )
-      : Optimizer<DedupedPack>(parameters), options_(options) {
+  explicit Sarah(ParameterPack<DedupedPack> parameters, SarahOptions options = {})
+    : Optimizer<DedupedPack>(parameters), options_(options) {
     if ((options_.recompute_every != -1) && options_.recompute_every == 0)
       throw std::invalid_argument(
         "Recompute every must be greater than 0 when recompute is enabled"
@@ -47,14 +45,10 @@ class Sarah : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
-            auto& prev_grad = std::get<detail::ExtractType_t<ParamType>>(
-              this->state_.prev_grad
-            );
-            auto& prev_update = std::get<detail::ExtractType_t<ParamType>>(
-              this->state_.prev_update
-            );
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
+            auto& prev_grad = std::get<detail::ExtractType_t<ParamType>>(this->state_.prev_grad);
+            auto& prev_update =
+              std::get<detail::ExtractType_t<ParamType>>(this->state_.prev_update);
             for (auto& param_ref : param_vec) {
               auto& param = param_ref.get();
               using T = typename ParamType::DataType;
@@ -69,8 +63,7 @@ class Sarah : public Optimizer<DedupedPack> {
   }
 
   bool recompute() const override {
-    return (options_.recompute_every != -1) &&
-           state_.step % options_.recompute_every == 0;
+    return (options_.recompute_every != -1) && state_.step % options_.recompute_every == 0;
   }
 
   void step() override {
@@ -78,14 +71,11 @@ class Sarah : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
-            auto& prev_grad_full =
-              std::get<detail::ExtractType_t<ParamType>>(state_.prev_grad);
-            auto& prev_update_full =
-              std::get<detail::ExtractType_t<ParamType>>(state_.prev_update);
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
+            auto& prev_grad_full = std::get<detail::ExtractType_t<ParamType>>(state_.prev_grad);
+            auto& prev_update_full = std::get<detail::ExtractType_t<ParamType>>(state_.prev_update);
 
-            size_t state_offset = 0;
+            int state_offset = 0;
             for (auto param_ref : param_vec) {
               auto& param = param_ref.get();
               using T = typename ParamType::DataType;
@@ -93,23 +83,21 @@ class Sarah : public Optimizer<DedupedPack> {
               auto& grad_full = param.grad();
               auto& data_full = param.data();
 
-              constexpr size_t vec_size = eve::wide<T>::size();
-              constexpr size_t unroll_factor = detail::UNROLL_FACTOR;
+              constexpr int vec_size = eve::wide<T>::size();
+              constexpr int unroll_factor = detail::UNROLL_FACTOR;
 
               std::vector<std::thread> threads;
-              size_t chunk_size =
-                (param.numel() + options_.num_proc - 1) / options_.num_proc;
+              int chunk_size = (param.numel() + options_.num_proc - 1) / options_.num_proc;
 
-              for (size_t t = 0; t < options_.num_proc; ++t) {
+              for (int t = 0; t < options_.num_proc; ++t) {
                 threads.emplace_back([&, t]() {
-                  size_t start = t * chunk_size;
-                  size_t end = std::min(start + chunk_size, param.numel());
+                  int start = t * chunk_size;
+                  int end = std::min(start + chunk_size, param.numel());
 
-                  size_t i = start;
-                  for (; i + vec_size * unroll_factor <= end;
-                       i += vec_size * unroll_factor) {
-                    detail::unroll<unroll_factor>([&]<size_t index>() {
-                      constexpr size_t offset = index * vec_size;
+                  int i = start;
+                  for (; i + vec_size * unroll_factor <= end; i += vec_size * unroll_factor) {
+                    detail::unroll<unroll_factor>([&]<int index>() {
+                      constexpr int offset = index * vec_size;
 
                       eve::wide<T> grad(&grad_full[i + offset]);
                       eve::wide<T> data(&data_full[i + offset]);
@@ -122,18 +110,12 @@ class Sarah : public Optimizer<DedupedPack> {
                         )
                           return grad;
 
-                        eve::wide<T> prev_grad(
-                          &prev_grad_full[state_offset + i + offset]
-                        );
-                        eve::wide<T> prev_update(
-                          &prev_update_full[state_offset + i + offset]
-                        );
+                        eve::wide<T> prev_grad(&prev_grad_full[state_offset + i + offset]);
+                        eve::wide<T> prev_update(&prev_update_full[state_offset + i + offset]);
 
                         grad = eve::add(eve::sub(grad, prev_grad), prev_update);
                         if (options_.lambda)
-                          grad = eve::fnma(
-                            eve::wide<T>(options_.lambda), data, grad
-                          );
+                          grad = eve::fnma(eve::wide<T>(options_.lambda), data, grad);
 
                         return grad;
                       }();
@@ -141,9 +123,7 @@ class Sarah : public Optimizer<DedupedPack> {
                       data = eve::fma(eve::wide<T>(options_.lr), update, data);
 
                       eve::store(data, &data_full[i + offset]);
-                      eve::store(
-                        grad, &prev_grad_full[state_offset + i + offset]
-                      );
+                      eve::store(grad, &prev_grad_full[state_offset + i + offset]);
                     });
                   }
 
@@ -155,8 +135,7 @@ class Sarah : public Optimizer<DedupedPack> {
                                  : grad - prev_grad_full[state_offset + i] +
                                      prev_update_full[state_offset + i];
 
-                    if (options_.lambda)
-                      update = update - options_.lambda * data_full[i];
+                    if (options_.lambda) update = update - options_.lambda * data_full[i];
 
                     data_full[i] += options_.lr * update;
                     prev_grad_full[state_offset + i] = grad;
@@ -183,8 +162,7 @@ class Sarah : public Optimizer<DedupedPack> {
     std::filesystem::path path(path_str);
     path.replace_extension(".bin");
 
-    if (!std::filesystem::exists(path))
-      throw std::runtime_error("File not found: " + path_str);
+    if (!std::filesystem::exists(path)) throw std::runtime_error("File not found: " + path_str);
 
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("Failed to open file: " + path_str);
@@ -245,8 +223,7 @@ class Sarah : public Optimizer<DedupedPack> {
       [&](auto&... param_vecs) {
         (
           [&](auto& param_vec) {
-            using ParamType = typename std::remove_cvref_t<
-              decltype(param_vec)>::value_type::type;
+            using ParamType = typename std::remove_cvref_t<decltype(param_vec)>::value_type::type;
 
             if (!first) type += ", ";
             first = false;
@@ -258,7 +235,7 @@ class Sarah : public Optimizer<DedupedPack> {
               pfirst = false;
 
               auto& shape = param_ref.get().size();
-              for (size_t i = 0; i < shape.size(); ++i) {
+              for (int i = 0; i < shape.size(); ++i) {
                 if (i > 0) type += "x";
                 type += std::to_string(shape[i]);
               }
