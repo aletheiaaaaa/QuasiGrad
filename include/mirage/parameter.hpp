@@ -424,6 +424,32 @@ class Parameter {
 
   void update(const std::vector<T>& new_val) { data_ = new_val; }
 
+  void load_from_bin(
+    const std::string& path_str, bool include_metadata = true, bool include_grad = false
+  ) {
+    std::filesystem::path path(path_str);
+    path.replace_extension(".bin");
+
+    if (!std::filesystem::exists(path)) throw std::runtime_error("File not found: " + path_str);
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("Failed to open file: " + path_str);
+
+    cereal::BinaryInputArchive ar(in);
+    if (include_metadata) {
+      std::string dtype;
+      std::vector<int> shape;
+      ar(dtype, shape);
+      if (dtype != std::string(dtype_name()))
+        throw std::runtime_error(
+          "dtype mismatch: expected " + std::string(dtype_name()) + ", got " + dtype
+        );
+      if (shape != shape_) throw std::runtime_error("shape mismatch in file: " + path_str);
+    }
+    ar(data_);
+    if (include_grad) ar(grad_);
+  }
+
   void save_to_bin(
     const std::string& path_str, bool include_metadata = true, bool include_grad = false
   ) const {
@@ -501,6 +527,7 @@ class Quantized : public Parameter<T> {
     : Parameter<T>(std::vector<int>(shape.begin(), shape.end())),
       scale_(scale),
       zero_point_(zero_point) {}
+
   template <typename S>
     requires detail::NestedSpan<S, Q>
   explicit Quantized(const S& span, float scale = 1.0f, float zero_point = 0.0f)
@@ -562,7 +589,7 @@ class Quantized : public Parameter<T> {
     return quantized_data;
   }
 
-  std::vector<T> fake_quantized() const {
+  std::vector<T> dequantized() const {
     const auto& vals = this->data();
     std::vector<T> fake_quantized_data(vals.size());
 
@@ -602,6 +629,57 @@ class Quantized : public Parameter<T> {
   float scale() const { return scale_; }
   float zero_point() const { return zero_point_; }
 
+  void load_from_bin(
+    const std::string& path_str,
+    bool dequantize = false,
+    bool include_metadata = true,
+    bool include_grad = false
+  ) {
+    std::filesystem::path path(path_str);
+    path.replace_extension(".bin");
+
+    if (!std::filesystem::exists(path)) throw std::runtime_error("File not found: " + path_str);
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("Failed to open file: " + path_str);
+
+    cereal::BinaryInputArchive ar(in);
+    if (include_metadata) {
+      std::string qtype, dtype;
+      std::vector<int> shape;
+      ar(qtype, dtype, shape, scale_, zero_point_);
+      if (qtype != qtype_name())
+        throw std::runtime_error("qtype mismatch: expected " + qtype_name() + ", got " + qtype);
+      if (dtype != std::string(this->dtype_name()))
+        throw std::runtime_error(
+          "dtype mismatch: expected " + std::string(this->dtype_name()) + ", got " + dtype
+        );
+      if (shape != this->shape_) throw std::runtime_error("shape mismatch in file: " + path_str);
+    }
+    if (dequantize) {
+      ar(this->data_);
+    } else {
+      std::vector<Q> q_data;
+      ar(q_data);
+
+      T scale_cast = static_cast<T>(scale_);
+      T zero_point_cast = static_cast<T>(zero_point_);
+      constexpr int f_vec_size = eve::wide<T>::size();
+
+      int i = 0;
+      for (; i + f_vec_size <= (int)q_data.size(); i += f_vec_size) {
+        eve::wide<Q, eve::fixed<f_vec_size>> q_chunk(q_data.data() + i);
+        auto q_float_vec = eve::convert(q_chunk, eve::as<T>{});
+        auto val_vec = eve::sub(q_float_vec, eve::wide<T>(zero_point_cast));
+        val_vec = eve::mul(val_vec, eve::wide<T>(scale_cast));
+        eve::store(val_vec, &this->data_[i]);
+      }
+      for (; i < (int)q_data.size(); ++i)
+        this->data_[i] = scale_cast * (static_cast<T>(q_data[i]) - zero_point_cast);
+    }
+    if (include_grad) ar(this->grad_);
+  }
+
   void save_to_bin(
     const std::string& path_str,
     bool dequantize = false,
@@ -621,7 +699,7 @@ class Quantized : public Parameter<T> {
       ar(qtype, dtype, this->shape_, scale_, zero_point_);
     }
     if (dequantize)
-      ar(fake_quantized());
+      ar(dequantized());
     else
       ar(quantized());
     if (include_grad) ar(this->grad_);
