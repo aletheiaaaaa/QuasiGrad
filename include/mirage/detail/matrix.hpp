@@ -12,15 +12,13 @@
 namespace mirage::detail {
 namespace matrix {
 template <bool take_sign, typename T, typename F>
-inline void triple(
+inline void pair(
   std::span<const T> A,
   std::span<const T> B,
-  std::span<const T> C,
   std::span<T> out,
   int M,
   int K,
   int N,
-  int P,
   int x_chunk,
   int y_chunk,
   int x_off,
@@ -33,16 +31,16 @@ inline void triple(
   constexpr int arr_size = x_height * y_height;
 
   x_chunk = std::min(x_chunk, M - x_off);
-  y_chunk = std::min(y_chunk, P - y_off);
+  y_chunk = std::min(y_chunk, N - y_off);
 
   for (int i = 0; i < x_chunk; i += x_height) {
     int i_rem = std::min(x_height, x_chunk - i);
 
-    for (int j = 0; j < N; j += y_height * vec_size) {
-      int j_rem = std::min(y_height * vec_size, N - j);
+    for (int j = 0; j < y_chunk; j += y_height * vec_size) {
+      int j_rem = std::min(y_height * vec_size, y_chunk - j);
 
-      std::array<eve::wide<T>, arr_size> acc0;
-      std::ranges::fill(acc0, eve::wide<T>(T(0)));
+      std::array<eve::wide<T>, arr_size> acc;
+      std::ranges::fill(acc, eve::wide<T>(T(0)));
 
       for (int k = 0; k < K; ++k) {
         std::array<eve::wide<T>, x_height> a_tile;
@@ -55,105 +53,39 @@ inline void triple(
 
         unroll<y_height>([&]<int idx>() {
           int valid = std::min(vec_size, j_rem - idx * vec_size);
-
           b_tile[idx] =
             (idx * vec_size < j_rem)
               ? eve::if_else(
-                  eve::keep_first(valid), eve::wide<T>(&B[k * N + j + vec_size * idx]), eve::zero
+                  eve::keep_first(valid),
+                  eve::wide<T>(&B[k * N + y_off + j + idx * vec_size]),
+                  eve::zero
                 )
               : eve::wide<T>(T(0));
-
           if (take_sign) b_tile[idx] = eve::sign(b_tile[idx]);
         });
 
         unroll<arr_size>([&]<int idx>() {
           constexpr int row = idx % x_height;
           constexpr int col = idx / x_height;
-
-          acc0[idx] = eve::fma(a_tile[row], b_tile[col], acc0[idx]);
+          acc[idx] = eve::fma(a_tile[row], b_tile[col], acc[idx]);
         });
       }
 
-      std::array<T, x_height * y_height * vec_size> temp;
-      unroll<arr_size>([&]<int idx>() { eve::store(acc0[idx], &temp[idx * vec_size]); });
-
-      for (int k = 0; k < y_chunk; k += y_height * vec_size) {
-        int k_rem = std::min(y_height * vec_size, y_chunk - k);
-
-        std::array<eve::wide<T>, arr_size> acc1;
-        std::ranges::fill(acc1, eve::wide<T>(T(0)));
-
-        for (int l = 0; l < j_rem; ++l) {
-          std::array<eve::wide<T>, x_height> t_tile;
-          std::array<eve::wide<T>, y_height> c_tile;
-
-          unroll<x_height>([&]<int idx>() {
-            int row = l % vec_size;
-            int col = l / vec_size;
-
-            t_tile[idx] = eve::wide<T>(temp[(col * x_height + idx) * vec_size + row]);
-          });
-
-          unroll<y_height>([&]<int idx>() {
-            int valid = std::min(vec_size, k_rem - idx * vec_size);
-
-            c_tile[idx] = (idx * vec_size < k_rem)
-                            ? eve::if_else(
-                                eve::keep_first(valid),
-                                eve::wide<T>(&C[(j + l) * P + y_off + k + idx * vec_size]),
-                                eve::zero
-                              )
-                            : eve::wide<T>(T(0));
-          });
-
-          unroll<arr_size>([&]<int idx>() {
-            constexpr int row = idx % x_height;
-            constexpr int col = idx / x_height;
-
-            acc1[idx] = eve::fma(t_tile[row], c_tile[col], acc1[idx]);
-          });
-        }
-
-        unroll<arr_size>([&]<int idx>() {
-          constexpr int row = idx % x_height;
-          constexpr int col = idx / x_height;
-
-          if (row < i_rem && col * vec_size < k_rem) {
-            auto mask = eve::keep_first(std::min(vec_size, k_rem - col * vec_size));
-
-            eve::wide<T> prev = eve::if_else(
-              mask,
-              eve::wide<T>(&out[(x_off + i + row) * P + y_off + k + col * vec_size]),
-              eve::zero
-            );
-            eve::store[mask](
-
-              prev + acc1[idx], &out[(x_off + i + row) * P + y_off + k + col * vec_size]
-            );
-          }
-        });
-      }
-    }
-
-    for (int j = 0; j < y_chunk; j += y_height * vec_size) {
-      int j_rem = std::min(y_height * vec_size, y_chunk - j);
+      // Single store per output element, with func applied in-register.
       unroll<arr_size>([&]<int idx>() {
         constexpr int row = idx % x_height;
         constexpr int col = idx / x_height;
 
         if (row < i_rem && col * vec_size < j_rem) {
           auto mask = eve::keep_first(std::min(vec_size, j_rem - col * vec_size));
-
-          eve::wide<T> val = eve::if_else(
-            mask, eve::wide<T>(&out[(x_off + i + row) * P + y_off + j + col * vec_size]), eve::zero
+          eve::store[mask](
+            func(acc[idx]), &out[(x_off + i + row) * N + y_off + j + col * vec_size]
           );
-          eve::store[mask](func(val), &out[(x_off + i + row) * P + y_off + j + col * vec_size]);
         }
       });
     }
   }
 }
-
 template <typename T, bool compute_ema, bool squared_fma>
 inline void matrix_accum_internal(
   std::span<const T> X,
@@ -214,50 +146,83 @@ inline void matrix_accum_internal(
 }  // namespace matrix
 
 template <typename T>
-void triple_tile(
+void pair_tile(
   std::span<const T> A,
   std::span<const T> B,
-  std::span<const T> C,
   std::span<T> out,
   int M,
   int K,
   int N,
-  int P,
+  int x_chunk,
+  int y_chunk,
+  int x_off,
+  int y_off
+) {
+  matrix::pair<false, T>(
+    A, B, out, M, K, N, x_chunk, y_chunk, x_off, y_off, [](auto& reg) { return reg; }
+  );
+}
+
+template <typename T>
+void sign_before_pair_tile(
+  std::span<const T> A,
+  std::span<const T> B,
+  std::span<T> out,
+  int M,
+  int K,
+  int N,
+  int x_chunk,
+  int y_chunk,
+  int x_off,
+  int y_off
+) {
+  matrix::pair<true, T>(
+    A, B, out, M, K, N, x_chunk, y_chunk, x_off, y_off, [](auto& reg) { return reg; }
+  );
+}
+
+template <typename T>
+void sign_after_pair_tile(
+  std::span<const T> A,
+  std::span<const T> B,
+  std::span<T> out,
+  int M,
+  int K,
+  int N,
   int x_chunk,
   int y_chunk,
   int x_off,
   int y_off,
   bool maximize
 ) {
-  matrix::triple<false, T>(
-    A, B, C, out, M, K, N, P, x_chunk, y_chunk, x_off, y_off, [&](auto& reg) {
-      return ((maximize) ? 1 : -1) * eve::sign(reg);
-    }
+  matrix::pair<false, T>(
+    A, B, out, M, K, N, x_chunk, y_chunk, x_off, y_off,
+    [&](auto& reg) { return ((maximize) ? 1 : -1) * eve::sign(reg); }
   );
 }
 
 template <typename T>
-void norm_triple_sign_tile(
+void norm_pair_tile(
   std::span<const T> A,
   std::span<const T> B,
-  std::span<const T> C,
   std::span<T> out,
   int M,
   int K,
   int N,
-  int P,
   int x_chunk,
   int y_chunk,
   int x_off,
   int y_off
 ) {
-  matrix::triple<true, T>(A, B, C, out, M, K, N, P, x_chunk, y_chunk, x_off, y_off, [&](auto& reg) {
-    eve::wide<T> m_reg(M);
-    eve::wide<T> n_reg(N);
-    eve::wide<T> twos(T(2));
-
-    return reg * twos / (m_reg + n_reg);
-  });
+  matrix::pair<false, T>(
+    A, B, out, M, K, N, x_chunk, y_chunk, x_off, y_off,
+    [&](auto& reg) {
+      eve::wide<T> m_reg(M);
+      eve::wide<T> n_reg(N);
+      eve::wide<T> twos(T(2));
+      return reg * twos / (m_reg + n_reg);
+    }
+  );
 }
 
 namespace matrix {
@@ -656,8 +621,7 @@ void normalize(
 }
 
 template <typename T>
-std::vector<T> transpose(std::span<const T> X, int M, int N) {
-  std::vector<T> out(M * N);
+void transpose(std::span<const T> X, std::span<T> out, int M, int N) {
   std::vector<int> indices(M * N);
 
   std::for_each(indices.begin(), indices.end(), [&](auto& val) {
@@ -670,8 +634,6 @@ std::vector<T> transpose(std::span<const T> X, int M, int N) {
   });
 
   collect(std::span<const T>(X), std::span<T>(out), std::span<const int>(indices), M * N);
-
-  return out;
 }
 
 template <typename T>

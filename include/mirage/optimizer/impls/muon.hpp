@@ -183,13 +183,15 @@ class Muon : public Optimizer<DedupedPack> {
               );
 
               if (width > height) {
-                for (int i = 0; i < numel; ++i)
-                  og_buf_slice[i] = og_mom_slice[height * (i / width) + i % width];
+                detail::transpose(
+                  std::span<const T>(og_mom_slice), std::span<T>(og_buf_slice), height, width
+                );
                 std::copy(og_mom_slice.begin(), og_mom_slice.end(), tp_buf_slice.begin());
               } else {
                 std::copy(og_mom_slice.begin(), og_mom_slice.end(), og_buf_slice.begin());
-                for (int i = 0; i < numel; ++i)
-                  tp_buf_slice[i] = og_mom_slice[height * (i / width) + i % width];
+                detail::transpose(
+                  std::span<const T>(og_mom_slice), std::span<T>(tp_buf_slice), height, width
+                );
               }
 
               for (int iter = 0; iter < options_.newton_schulz_iters; ++iter) {
@@ -255,13 +257,13 @@ class Muon : public Optimizer<DedupedPack> {
                 );
 
                 std::copy(step3_slice.begin(), step3_slice.end(), og_buf_slice.begin());
-                for (int i = 0; i < numel; ++i)
-                  tp_buf_slice[i] = step3_slice[larger * (i / smaller) + i % smaller];
+                detail::transpose(
+                  std::span<const T>(step3_slice), std::span<T>(tp_buf_slice), smaller, larger
+                );
               }
 
               if (width > height) {
-                for (int i = 0; i < numel; ++i)
-                  og_mom_slice[i] = og_buf_slice[height * (i / width) + i % width];
+                detail::transpose(std::span<const T>(og_buf_slice), std::span<T>(og_mom_slice), width, height);
               } else {
                 std::copy(og_buf_slice.begin(), og_buf_slice.end(), og_mom_slice.begin());
               }
